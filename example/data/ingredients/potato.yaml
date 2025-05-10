@@ -1,0 +1,4 @@
+name: potato
+category: vegetable
+kb: potato # slug referring to a knowledge base entry in kb/
+tags: [vegetable, starch]
