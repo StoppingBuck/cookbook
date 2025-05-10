@@ -1,0 +1,2 @@
+Whenever you execute commands in Agent mode, sometimes the process will 'hang' - either because it is supposed to stay active or because the command just doesn't exit properly. Either way, that often results in you hanging. 
+In those cases, I will use CTRL+C to kill the process and 'free' you. Thus, when analyzing terminal output, ignore anything related to CTRL+C behavior when seen at the end of a command's output (that would be me, killing the process to free you to continue your work)
