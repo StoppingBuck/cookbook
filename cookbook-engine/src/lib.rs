@@ -309,4 +309,13 @@ impl DataManager {
     pub fn get_all_kb_entries(&self) -> Vec<&KnowledgeBaseEntry> {
         self.kb_entries.values().collect()
     }
+    
+    /// Returns all recipes that use the specified ingredient
+    pub fn get_recipes_with_ingredient(&self, ingredient_name: &str) -> Vec<&Recipe> {
+        self.recipes.iter()
+            .filter(|recipe| {
+                recipe.ingredients.iter().any(|ing| ing.ingredient == ingredient_name)
+            })
+            .collect()
+    }
 }

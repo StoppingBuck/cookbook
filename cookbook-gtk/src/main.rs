@@ -755,22 +755,27 @@ impl SimpleComponent for AppModel {
                     details_container.append(&title);
                     
                     // Category
-                    let category = gtk::Label::new(None);
-                    category.set_markup(&format!("<b>Category:</b> {}", ingredient.category));
-                    category.set_halign(gtk::Align::Start);
-                    details_container.append(&category);
+                    let category_label = gtk::Label::new(None);
+                    category_label.set_markup(&format!("<b>Category:</b> {}", ingredient.category));
+                    category_label.set_halign(gtk::Align::Start);
+                    category_label.set_margin_bottom(5);
+                    details_container.append(&category_label);
                     
-                    // Tags
+                    // Tags (if any)
                     if !ingredient.tags.is_empty() {
-                        let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-                        tags_box.set_margin_top(5);
-                        
-                        let tags_label = gtk::Label::new(Some("Tags:"));
+                        let tags_label = gtk::Label::new(None);
+                        tags_label.set_markup("<b>Tags:</b>");
                         tags_label.set_halign(gtk::Align::Start);
-                        tags_box.append(&tags_label);
+                        tags_label.set_margin_bottom(5);
+                        details_container.append(&tags_label);
+                        
+                        let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+                        tags_box.set_margin_start(10);
+                        tags_box.set_margin_bottom(10);
                         
                         for tag in &ingredient.tags {
-                            let tag_button = gtk::Button::with_label(tag);
+                            let tag_button = gtk::Button::new();
+                            tag_button.set_label(tag);
                             tag_button.add_css_class("tag");
                             tags_box.append(&tag_button);
                         }
@@ -789,44 +794,57 @@ impl SimpleComponent for AppModel {
                             } else if let (Some(quantity), None) = (pantry_item.quantity, &pantry_item.quantity_type) {
                                 stock_label.set_markup(&format!("<b>In stock:</b> {}", quantity));
                             } else {
-                                stock_label.set_markup("<b>In stock:</b> Yes (unknown quantity)");
+                                stock_label.set_markup("<b>In stock:</b> Yes (quantity unknown)");
                             }
                             
                             stock_label.set_halign(gtk::Align::Start);
                             details_container.append(&stock_label);
                             
+                            // Last updated date
                             let updated_label = gtk::Label::new(None);
                             updated_label.set_markup(&format!("<b>Last updated:</b> {}", pantry_item.last_updated));
                             updated_label.set_halign(gtk::Align::Start);
+                            updated_label.set_margin_bottom(10);
                             details_container.append(&updated_label);
                         } else {
-                            let stock_label = gtk::Label::new(Some("Not in stock"));
-                            stock_label.set_halign(gtk::Align::Start);
-                            stock_label.set_margin_top(10);
-                            details_container.append(&stock_label);
+                            let not_in_stock_label = gtk::Label::new(None);
+                            not_in_stock_label.set_markup("<b>Not in pantry</b>");
+                            not_in_stock_label.set_halign(gtk::Align::Start);
+                            not_in_stock_label.set_margin_top(10);
+                            details_container.append(&not_in_stock_label);
                         }
                     }
                     
-                    // Knowledge base info if available
-                    if let Some(kb_slug) = &ingredient.kb {
-                        if let Some(kb_entry) = dm.get_kb_entry(kb_slug) {
-                            let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
-                            separator.set_margin_top(10);
-                            separator.set_margin_bottom(10);
-                            details_container.append(&separator);
+                    // Recipes with this ingredient
+                    let recipes_with_ingredient = dm.get_recipes_with_ingredient(&ingredient.name);
+                    if !recipes_with_ingredient.is_empty() {
+                        let recipes_header = gtk::Label::new(None);
+                        recipes_header.set_markup(&format!("<span size='large' weight='bold'>Recipes with {}:</span>", ingredient.name));
+                        recipes_header.set_halign(gtk::Align::Start);
+                        recipes_header.set_margin_top(15);
+                        recipes_header.set_margin_bottom(5);
+                        details_container.append(&recipes_header);
+                        
+                        let recipes_box = gtk::Box::new(gtk::Orientation::Vertical, 5);
+                        recipes_box.set_margin_start(10);
+                        
+                        for recipe in recipes_with_ingredient {
+                            let recipe_button = gtk::Button::new();
+                            recipe_button.set_label(&recipe.title);
+                            recipe_button.set_halign(gtk::Align::Start);
+                            recipe_button.add_css_class("link-button");
                             
-                            let kb_label = gtk::Label::new(None);
-                            kb_label.set_markup("<b>Knowledge Base:</b>");
-                            kb_label.set_halign(gtk::Align::Start);
-                            details_container.append(&kb_label);
+                            let sender_clone = sender.clone();
+                            let recipe_title = recipe.title.clone();
+                            recipe_button.connect_clicked(move |_| {
+                                sender_clone.input(AppMsg::SwitchTab(Tab::Recipes));
+                                sender_clone.input(AppMsg::SelectRecipe(recipe_title.clone()));
+                            });
                             
-                            let kb_title = gtk::Label::new(None);
-                            kb_title.set_markup(&format!("<i>{}</i>", kb_entry.title));
-                            kb_title.set_halign(gtk::Align::Start);
-                            details_container.append(&kb_title);
-                            
-                            // We could add a preview of the KB content here
+                            recipes_box.append(&recipe_button);
                         }
+                        
+                        details_container.append(&recipes_box);
                     }
                     
                     widgets.pantry_details.append(&details_container);
@@ -1054,19 +1072,17 @@ impl SimpleComponent for AppModel {
             });
             
             help_dialog.present();
-        }
-
-        // Rebuild pantry list when filters change or search text changes
-        if self.current_tab == Tab::Pantry {
-            // Step 1: Rebuild the pantry list with filtered items
-            
-            // Clear current list
-            while let Some(child) = widgets.pantry_list.first_child() {
-                widgets.pantry_list.remove(&child);
-            }
-            
-            if let Some(ref dm) = self.data_manager {
-                let pantry = dm.get_pantry();
+        }                // Rebuild pantry list when filters change or search text changes
+                if self.current_tab == Tab::Pantry {
+                    // Step 1: Rebuild the pantry list with filtered items
+                    
+                    // Clear current list
+                    while let Some(child) = widgets.pantry_list.first_child() {
+                        widgets.pantry_list.remove(&child);
+                    }
+                    
+                    if let Some(ref dm) = self.data_manager {
+                        let _pantry = dm.get_pantry(); // Prefix with underscore to avoid unused variable warning
                 
                 // Group ingredients by category
                 let mut pantry_items_by_category: std::collections::HashMap<String, Vec<(String, Option<String>, Option<String>, bool)>> = std::collections::HashMap::new();
