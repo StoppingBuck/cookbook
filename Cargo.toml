@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+    "cookbook-engine",
+    "cookbook-gtk"
+]

@@ -5,6 +5,8 @@
 Whenever you execute commands in Agent mode, sometimes the process will 'hang' - either because it is supposed to stay active or because the command just doesn't exit properly. Either way, that often results in you hanging. 
 In those cases, I will use CTRL+C to kill the process and 'free' you. Thus, when analyzing terminal output, ignore anything related to CTRL+C behavior when seen at the end of a command's output (that would be me, killing the process to free you to continue your work)
 
+You are not allowed to replace entire files from terminal using EOF markers. You can only replace parts of files.
+
 # Project: Cookbook
 Cookbook is a cross-platform recipe and pantry manager, as well as wiki. It is split into multiple crates:
 
@@ -157,7 +159,7 @@ This is types or utils that are shared between engine and GUI or between differe
 - Favor clean separation of concerns: logic in `engine`, UI in frontend.
 - Keep interfaces predictable and ergonomic for GUI devs.
 - Prefer small, focused functions over large ones.
-- Prefer best practices - no dirty hacks.
+- Deal with warnings - don't ignore them.
 
 ## Naming
 - Use snake_case in Rust.

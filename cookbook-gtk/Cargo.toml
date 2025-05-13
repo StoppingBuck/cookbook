@@ -1,0 +1,17 @@
+[package]
+name = "cookbook-gtk"
+version = "0.1.0"
+edition = "2021"
+description = "A cross-platform recipe and pantry manager GTK4 application"
+authors = ["Cookbook Team"]
+license = "MIT"
+
+[dependencies]
+cookbook-engine = { path = "../cookbook-engine" }
+gtk = { version = "0.9.2", package = "gtk4" }
+relm4 = { version = "0.9.1", features = ["macros"] }
+chrono = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+markdown = "0.3"
+dirs = "5.0"
