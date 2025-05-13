@@ -71,6 +71,7 @@ struct AppWidgets {
     main_stack: gtk::Stack,             // The stack for switching between tabs
     recipes_label: gtk::Label,          // Label for displaying recipe details
     recipes_details: gtk::Box,          // Container for recipe details
+    recipes_list_box: gtk::ListBox,     // The list box containing recipe items
     pantry_label: gtk::Label,           // Label for displaying pantry info
     pantry_list: gtk::Box,              // Container for the pantry list items
     pantry_details: gtk::Box,           // Container for pantry item details
@@ -637,6 +638,7 @@ impl SimpleComponent for AppModel {
             main_stack,
             recipes_label: recipes_label.clone(),
             recipes_details: recipes_details,      // Store the recipes_details container
+            recipes_list_box: recipes_list_box,    // Store the recipes list box
             pantry_label: pantry_label.clone(),
             pantry_list: pantry_list_container,    // Store the pantry list container
             pantry_details: pantry_details,        // Store the pantry details container
@@ -729,6 +731,24 @@ impl SimpleComponent for AppModel {
                 button.add_css_class("suggested-action");
             } else {
                 button.remove_css_class("suggested-action");
+            }
+        }
+        
+        // Select the correct recipe in the list box when a recipe is selected
+        if self.current_tab == Tab::Recipes && self.selected_recipe.is_some() {
+            let recipe_name = self.selected_recipe.as_ref().unwrap();
+            
+            if let Some(ref dm) = self.data_manager {
+                let recipes = dm.get_all_recipes();
+                
+                // Find the index of the selected recipe
+                if let Some(index) = recipes.iter().position(|recipe| recipe.title == *recipe_name) {
+                    // Get the row at that index
+                    if let Some(row) = widgets.recipes_list_box.row_at_index(index as i32) {
+                        // Select the row (this will highlight it in the UI)
+                        widgets.recipes_list_box.select_row(Some(&row));
+                    }
+                }
             }
         }
         
