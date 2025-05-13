@@ -34,6 +34,7 @@ struct AppModel {
     current_tab: Tab,                       // The currently selected tab in the UI (e.g., Recipes, Pantry)
     selected_recipe: Option<String>,        // The name of the currently selected recipe, if any
     selected_ingredient: Option<String>,    // The name of the currently selected ingredient, if any
+    selected_kb_entry: Option<String>,      // The slug of the currently selected KB entry, if any
     search_text: String,                    // The current text in the search bar
     show_about_dialog: bool,                // Flag to indicate if the About dialog should be shown
     show_help_dialog: bool,                 // Flag to indicate if the Help dialog should be shown
@@ -59,6 +60,7 @@ enum AppMsg {
     ResetDialogs,              // Reset dialog flags
     SelectRecipe(String),      // Select a recipe by name
     SelectIngredient(String),  // Select an ingredient by name
+    SelectKnowledgeBaseEntry(String), // Select a KB entry by slug
     ToggleCategoryFilter(String, bool), // Toggle a category filter (category, is_selected)
     ToggleInStockFilter(bool), // Toggle the in-stock only filter
     SearchTextChanged(String), // Update the search text
@@ -78,6 +80,8 @@ struct AppWidgets {
     pantry_category_filters: gtk::Box,  // Container for category filter checkboxes
     pantry_in_stock_switch: gtk::Switch, // Switch for toggling in-stock only filter
     kb_label: gtk::Label,               // Label for displaying knowledge base info
+    kb_list_box: gtk::ListBox,          // The list box containing KB entry items
+    kb_details: gtk::Box,               // Container for KB entry details
     settings_label: gtk::Label,         // Label for displaying settings info
     sidebar_buttons: Vec<gtk::Button>,  // Buttons in the sidebar
 }
@@ -135,6 +139,7 @@ impl SimpleComponent for AppModel {
             current_tab: Tab::Recipes,  // Default tab is Recipes
             selected_recipe: None,      // No recipe selected initially
             selected_ingredient: None,  // No ingredient selected initially
+            selected_kb_entry: None,    // No KB entry selected initially
             search_text: String::new(), // Search bar is empty initially
             show_about_dialog: false,   // About dialog is not shown by default
             show_help_dialog: false,    // Help dialog is not shown by default
@@ -582,19 +587,91 @@ impl SimpleComponent for AppModel {
         kb_title.set_halign(gtk::Align::Start);
         kb_title.set_margin_all(10);
         
-        let kb_label = gtk::Label::new(None);
+        kb_container.append(&kb_title);
+        
+        // Split view for Knowledge Base (list on left, details on right)
+        let kb_content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        kb_content.set_hexpand(true);
+        kb_content.set_vexpand(true);
+        
+        // Knowledge Base list (left side)
+        let kb_list_scroll = gtk::ScrolledWindow::new();
+        kb_list_scroll.set_hexpand(false);
+        kb_list_scroll.set_vexpand(true);
+        kb_list_scroll.set_min_content_width(250);
+        
+        let kb_list_box = gtk::ListBox::new();
+        kb_list_box.set_selection_mode(gtk::SelectionMode::Single);
+        
+        // Add KB entries to list if available
         if let Some(ref dm) = model.data_manager {
-            let kb_entries = dm.get_all_kb_entries();
-            kb_label.set_text(&format!("The knowledge base contains {} entries.", kb_entries.len()));
+            let entries = dm.get_all_kb_entries();
+            if !entries.is_empty() {
+                // Sort entries by title for better usability
+                let mut sorted_entries = entries.clone();
+                sorted_entries.sort_by(|a, b| a.title.cmp(&b.title));
+                
+                for entry in sorted_entries {
+                    let row = gtk::ListBoxRow::new();
+                    let title_label = gtk::Label::new(Some(&entry.title));
+                    title_label.set_halign(gtk::Align::Start);
+                    title_label.set_margin_start(5);
+                    title_label.set_margin_end(5);
+                    title_label.set_margin_top(5);
+                    title_label.set_margin_bottom(5);
+                    row.set_child(Some(&title_label));
+                    
+                    kb_list_box.append(&row);
+                }
+            } else {
+                let no_entries_row = gtk::ListBoxRow::new();
+                let no_entries_label = gtk::Label::new(Some("No KB entries available"));
+                no_entries_label.set_margin_all(10);
+                no_entries_row.set_child(Some(&no_entries_label));
+                kb_list_box.append(&no_entries_row);
+            }
         } else {
-            kb_label.set_text("No knowledge base data available");
+            let no_data_row = gtk::ListBoxRow::new();
+            let no_data_label = gtk::Label::new(Some("Failed to load KB data"));
+            no_data_label.set_margin_all(10);
+            no_data_row.set_child(Some(&no_data_label));
+            kb_list_box.append(&no_data_row);
         }
         
-        kb_label.set_halign(gtk::Align::Start);
-        kb_label.set_margin_start(10);
+        // KB entry selection handler
+        let sender_clone = sender.clone();
+        let dm_clone = model.data_manager.clone();
+        kb_list_box.connect_row_selected(move |_list, row_opt| {
+            if let Some(row) = row_opt {
+                if let Some(ref dm) = dm_clone {
+                    let entries = dm.get_all_kb_entries();
+                    if row.index() >= 0 && (row.index() as usize) < entries.len() {
+                        let entry = &entries[row.index() as usize];
+                        sender_clone.input(AppMsg::SelectKnowledgeBaseEntry(entry.slug.clone()));
+                    }
+                }
+            }
+        });
         
-        kb_container.append(&kb_title);
-        kb_container.append(&kb_label);
+        kb_list_scroll.set_child(Some(&kb_list_box));
+        
+        // KB details view (right side)
+        let kb_details = gtk::Box::new(gtk::Orientation::Vertical, 10);
+        kb_details.set_hexpand(true);
+        kb_details.set_vexpand(true);
+        
+        let kb_label = gtk::Label::new(Some("Select an item to view details"));
+        kb_label.set_halign(gtk::Align::Center);
+        kb_label.set_valign(gtk::Align::Center);
+        kb_label.set_hexpand(true);
+        kb_label.set_vexpand(true);
+        
+        kb_details.append(&kb_label);
+        
+        kb_content.append(&kb_list_scroll);
+        kb_content.append(&kb_details);
+        
+        kb_container.append(&kb_content);
         
         // Settings tab content
         let settings_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
@@ -645,6 +722,8 @@ impl SimpleComponent for AppModel {
             pantry_category_filters: category_filters_box, // Store category filter checkboxes
             pantry_in_stock_switch: stock_filter_switch,  // Store in-stock filter switch
             kb_label: kb_label.clone(),
+            kb_list_box: kb_list_box,              // Store the KB list box
+            kb_details: kb_details,                // Store the KB details container
             settings_label: settings_label.clone(),
             sidebar_buttons,
         };
@@ -690,6 +769,9 @@ impl SimpleComponent for AppModel {
             }
             AppMsg::SelectIngredient(ingredient_name) => {
                 self.selected_ingredient = Some(ingredient_name);
+            }
+            AppMsg::SelectKnowledgeBaseEntry(slug) => {
+                self.selected_kb_entry = Some(slug);
             }
             AppMsg::ToggleCategoryFilter(category, is_selected) => {
                 if is_selected && !self.selected_pantry_categories.contains(&category) {
@@ -1041,6 +1123,104 @@ impl SimpleComponent for AppModel {
                 }
 
                 widgets.recipes_details.append(&select_label);
+            }
+        }
+        
+        // Update KB entry details if a KB entry is selected
+        if self.current_tab == Tab::KnowledgeBase {
+            // Select the correct KB entry in the list box
+            if let Some(kb_slug) = &self.selected_kb_entry {
+                if let Some(ref dm) = self.data_manager {
+                    let entries = dm.get_all_kb_entries();
+                    
+                    // Find the index of the selected KB entry
+                    if let Some(index) = entries.iter().position(|entry| entry.slug == *kb_slug) {
+                        // Get the row at that index
+                        if let Some(row) = widgets.kb_list_box.row_at_index(index as i32) {
+                            // Select the row (this will highlight it in the UI)
+                            widgets.kb_list_box.select_row(Some(&row));
+                        }
+                    }
+                    
+                    // Update details view
+                    // Clear previous content
+                    while let Some(child) = widgets.kb_details.first_child() {
+                        widgets.kb_details.remove(&child);
+                    }
+                    
+                    // Find the selected KB entry
+                    if let Some(kb_entry) = dm.get_kb_entry(kb_slug) {
+                        // Create a scrollable container for the KB entry details
+                        let entry_details_scroll = gtk::ScrolledWindow::new();
+                        entry_details_scroll.set_hexpand(true);
+                        entry_details_scroll.set_vexpand(true);
+                        
+                        let details_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
+                        details_container.set_margin_all(10);
+                        
+                        // Title
+                        let title = gtk::Label::new(None);
+                        title.set_markup(&format!("<span size='x-large' weight='bold'>{}</span>", kb_entry.title));
+                        title.set_halign(gtk::Align::Start);
+                        title.set_margin_bottom(10);
+                        details_container.append(&title);
+                        
+                        // Image (if available)
+                        if let Some(image_name) = &kb_entry.image {
+                            // Construct path to image file in the data directory's kb folder
+                            // Images are stored alongside KB entries in the data/kb directory
+                            let image_path = self.data_dir.join("kb").join(image_name);
+                            if image_path.exists() {
+                                // Use gtk::Image for compatibility
+                                let image = gtk::Image::from_file(&image_path);
+                                image.set_halign(gtk::Align::Center);
+                                image.set_margin_bottom(15);
+                                details_container.append(&image);
+                            } else {
+                                eprintln!("Image not found: {:?}", image_path);
+                                
+                                // Add a placeholder image or text
+                                let missing_label = gtk::Label::new(Some("Image not available"));
+                                missing_label.set_halign(gtk::Align::Center);
+                                missing_label.set_margin_bottom(15);
+                                details_container.append(&missing_label);
+                            }
+                        }
+                        
+                        // Content (formatted as markdown)
+                        let content_text = gtk::Label::new(Some(&kb_entry.content));
+                        content_text.set_halign(gtk::Align::Start);
+                        content_text.set_wrap(true);
+                        content_text.set_xalign(0.0);
+                        content_text.set_use_markup(true); // Allow basic HTML-like formatting
+                        details_container.append(&content_text);
+                        
+                        entry_details_scroll.set_child(Some(&details_container));
+                        widgets.kb_details.append(&entry_details_scroll);
+                    } else {
+                        // KB entry not found
+                        let not_found_label = gtk::Label::new(Some(&format!("Knowledge Base entry '{}' not found", kb_slug)));
+                        not_found_label.set_halign(gtk::Align::Center);
+                        not_found_label.set_valign(gtk::Align::Center);
+                        widgets.kb_details.append(&not_found_label);
+                    }
+                } else {
+                    // Data manager not available
+                    let error_label = gtk::Label::new(Some("Unable to load KB entry: data manager not available"));
+                    error_label.set_halign(gtk::Align::Center);
+                    error_label.set_valign(gtk::Align::Center);
+                    widgets.kb_details.append(&error_label);
+                }
+            } else {
+                // No KB entry selected
+                while let Some(child) = widgets.kb_details.first_child() {
+                    widgets.kb_details.remove(&child);
+                }
+                
+                let select_label = gtk::Label::new(Some("Select an item to view details"));
+                select_label.set_halign(gtk::Align::Center);
+                select_label.set_valign(gtk::Align::Center);
+                widgets.kb_details.append(&select_label);
             }
         }
         

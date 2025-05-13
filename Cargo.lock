@@ -153,6 +153,7 @@ dependencies = [
  "chrono",
  "cookbook-engine",
  "dirs",
+ "gdk-pixbuf",
  "gtk4",
  "markdown",
  "relm4",
@@ -312,9 +313,9 @@ dependencies = [
 
 [[package]]
 name = "gdk-pixbuf"
-version = "0.20.9"
+version = "0.20.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7563afd6ff0a221edfbb70a78add5075b8d9cb48e637a40a24c3ece3fea414d0"
+checksum = "2fd242894c084f4beed508a56952750bce3e96e85eb68fdc153637daa163e10c"
 dependencies = [
  "gdk-pixbuf-sys",
  "gio",
