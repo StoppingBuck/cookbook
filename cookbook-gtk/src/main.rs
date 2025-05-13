@@ -1055,6 +1055,137 @@ impl SimpleComponent for AppModel {
             
             help_dialog.present();
         }
+
+        // Rebuild pantry list when filters change or search text changes
+        if self.current_tab == Tab::Pantry {
+            // Step 1: Rebuild the pantry list with filtered items
+            
+            // Clear current list
+            while let Some(child) = widgets.pantry_list.first_child() {
+                widgets.pantry_list.remove(&child);
+            }
+            
+            if let Some(ref dm) = self.data_manager {
+                let pantry = dm.get_pantry();
+                
+                // Create a map of ingredient name -> is in stock and quantity info
+                let mut in_pantry = std::collections::HashMap::new();
+                if let Some(pantry) = pantry {
+                    for item in &pantry.items {
+                        // Convert f64 quantity to String for display
+                        let quantity_str = item.quantity.map(|q| q.to_string());
+                        in_pantry.insert(item.ingredient.clone(), (quantity_str, item.quantity_type.clone()));
+                    }
+                }
+                
+                // Group ingredients by category
+                let mut pantry_items_by_category: std::collections::HashMap<String, Vec<(String, Option<String>, Option<String>, bool)>> = std::collections::HashMap::new();
+                
+                for ingredient in dm.get_all_ingredients() {
+                    let is_in_stock = in_pantry.contains_key(&ingredient.name);
+                    
+                    // Apply filters
+                    if self.show_in_stock_only && !is_in_stock {
+                        continue; // Skip items not in stock if filter is active
+                    }
+                    
+                    if !self.selected_pantry_categories.is_empty() && !self.selected_pantry_categories.contains(&ingredient.category) {
+                        continue; // Skip items not in selected categories
+                    }
+                    
+                    // Apply search filter if any
+                    if !self.search_text.is_empty() && !ingredient.name.to_lowercase().contains(&self.search_text.to_lowercase()) {
+                        continue; // Skip items not matching search
+                    }
+                    
+                    let (quantity, quantity_type) = if let Some((q, t)) = in_pantry.get(&ingredient.name) {
+                        (q.clone(), t.clone())
+                    } else {
+                        (None, None)
+                    };
+                    
+                    pantry_items_by_category
+                        .entry(ingredient.category.clone())
+                        .or_default()
+                        .push((ingredient.name.clone(), quantity, quantity_type, is_in_stock));
+                }
+                
+                // Sort categories and ingredients
+                let mut sorted_categories: Vec<String> = pantry_items_by_category.keys().cloned().collect();
+                sorted_categories.sort();
+                
+                if pantry_items_by_category.is_empty() {
+                    // No items match the filters
+                    let no_items_label = gtk::Label::new(Some("No ingredients match the current filters"));
+                    no_items_label.set_margin_all(20);
+                    widgets.pantry_list.append(&no_items_label);
+                } else {
+                    for category in sorted_categories {
+                        // Create category header
+                        let category_frame = gtk::Frame::new(Some(&category));
+                        category_frame.set_margin_bottom(10);
+                        
+                        let category_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                        category_frame.set_child(Some(&category_box));
+                        
+                        if let Some(items) = pantry_items_by_category.get_mut(&category) {
+                            // Sort ingredients alphabetically within category
+                            items.sort_by(|a, b| a.0.cmp(&b.0));
+                            
+                            for (name, quantity, quantity_type, is_in_stock) in items.iter() {
+                                let item_row = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+                                item_row.set_margin_all(5);
+                                
+                                // Create the item label with quantity if available
+                                let mut label_text = name.clone();
+                                if let (Some(q), Some(t)) = (quantity, quantity_type) {
+                                    label_text = format!("{} ({} {})", name, q, t);
+                                } else if let (Some(q), None) = (quantity, quantity_type) {
+                                    label_text = format!("{} ({})", name, q);
+                                }
+                                
+                                // Add checkmark for in-stock items
+                                if *is_in_stock {
+                                    label_text = format!("{} ✅", label_text);
+                                }
+                                
+                                let item_label = gtk::Label::new(Some(&label_text));
+                                item_label.set_halign(gtk::Align::Start);
+                                item_label.set_hexpand(true);
+                                item_row.append(&item_label);
+                                
+                                // Make the row selectable
+                                let click_gesture = gtk::GestureClick::new();
+                                item_row.add_css_class("pantry-item");
+                                item_row.add_controller(click_gesture.clone());
+                                
+                                // Highlight if selected
+                                if let Some(selected) = &self.selected_ingredient {
+                                    if selected == name {
+                                        item_row.add_css_class("selected");
+                                    }
+                                }
+                                
+                                let sender_clone = sender.clone();
+                                let name_clone = name.clone();
+                                click_gesture.connect_pressed(move |_, _, _, _| {
+                                    sender_clone.input(AppMsg::SelectIngredient(name_clone.clone()));
+                                });
+                                
+                                category_box.append(&item_row);
+                            }
+                        }
+                        
+                        widgets.pantry_list.append(&category_frame);
+                    }
+                }
+            } else {
+                // No data available
+                let no_data_label = gtk::Label::new(Some("No ingredient data available"));
+                no_data_label.set_margin_all(10);
+                widgets.pantry_list.append(&no_data_label);
+            }
+        }
     }
 }
 // The main function initializes the GTK application and runs the app
