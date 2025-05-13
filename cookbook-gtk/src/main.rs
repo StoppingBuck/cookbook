@@ -1068,21 +1068,11 @@ impl SimpleComponent for AppModel {
             if let Some(ref dm) = self.data_manager {
                 let pantry = dm.get_pantry();
                 
-                // Create a map of ingredient name -> is in stock and quantity info
-                let mut in_pantry = std::collections::HashMap::new();
-                if let Some(pantry) = pantry {
-                    for item in &pantry.items {
-                        // Convert f64 quantity to String for display
-                        let quantity_str = item.quantity.map(|q| q.to_string());
-                        in_pantry.insert(item.ingredient.clone(), (quantity_str, item.quantity_type.clone()));
-                    }
-                }
-                
                 // Group ingredients by category
                 let mut pantry_items_by_category: std::collections::HashMap<String, Vec<(String, Option<String>, Option<String>, bool)>> = std::collections::HashMap::new();
                 
                 for ingredient in dm.get_all_ingredients() {
-                    let is_in_stock = in_pantry.contains_key(&ingredient.name);
+                    let is_in_stock = dm.is_in_pantry(&ingredient.name);
                     
                     // Apply filters
                     if self.show_in_stock_only && !is_in_stock {
@@ -1098,8 +1088,9 @@ impl SimpleComponent for AppModel {
                         continue; // Skip items not matching search
                     }
                     
-                    let (quantity, quantity_type) = if let Some((q, t)) = in_pantry.get(&ingredient.name) {
-                        (q.clone(), t.clone())
+                    // Get quantity information if in pantry
+                    let (quantity, quantity_type) = if let Some(pantry_item) = dm.get_pantry_item(&ingredient.name) {
+                        (pantry_item.quantity.map(|q| q.to_string()), pantry_item.quantity_type.clone())
                     } else {
                         (None, None)
                     };

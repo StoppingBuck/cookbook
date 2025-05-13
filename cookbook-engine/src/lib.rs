@@ -274,6 +274,22 @@ impl DataManager {
         self.ingredients.get(name)
     }
     
+    pub fn is_in_pantry(&self, ingredient_name: &str) -> bool {
+        if let Some(pantry) = &self.pantry {
+            pantry.items.iter().any(|item| item.ingredient == ingredient_name)
+        } else {
+            false
+        }
+    }
+    
+    pub fn get_pantry_item(&self, ingredient_name: &str) -> Option<&PantryItem> {
+        if let Some(pantry) = &self.pantry {
+            pantry.items.iter().find(|item| item.ingredient == ingredient_name)
+        } else {
+            None
+        }
+    }
+    
     pub fn get_all_recipes(&self) -> &[Recipe] {
         &self.recipes
     }
