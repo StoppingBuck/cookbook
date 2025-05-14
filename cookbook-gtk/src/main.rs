@@ -65,6 +65,9 @@ enum AppMsg {
     ToggleCategoryFilter(String, bool), // Toggle a category filter (category, is_selected)
     ToggleInStockFilter(bool), // Toggle the in-stock only filter
     SearchTextChanged(String), // Update the search text
+    EditIngredient(String),    // Edit an ingredient
+    // New message to handle updates that require mutable access to DataManager
+    UpdateIngredientWithPantry(String, cookbook_engine::Ingredient, Option<f64>, Option<String>), // (original_name, new_ingredient, quantity, quantity_type)
 }
 
 // References to the GTK widgets used in the app (e.g. buttons, labels, stack)
@@ -735,7 +738,7 @@ impl SimpleComponent for AppModel {
     }
     
     // update handles incoming messages (e.g. switching tabs, selecting a recipe) and updates the model state
-    fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
+    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
             AppMsg::SwitchTab(new_tab) => {
                 self.current_tab = new_tab;
@@ -780,6 +783,239 @@ impl SimpleComponent for AppModel {
             AppMsg::SearchTextChanged(text) => {
                 self.search_text = text;
             }
+            AppMsg::EditIngredient(ingredient_name) => {
+                // Handle the edit ingredient action by opening a dialog
+                if let Some(ref data_manager) = self.data_manager {
+                    if let Some(ingredient) = data_manager.get_ingredient(&ingredient_name) {
+                        // Create a dialog for editing the ingredient
+                        let dialog = gtk::Dialog::new();
+                        dialog.set_title(Some(&format!("Edit Ingredient: {}", ingredient_name)));
+                        dialog.set_modal(true);
+                        dialog.set_default_width(400);
+                        
+                        // Get the content area of the dialog
+                        let content_area = dialog.content_area();
+                        content_area.set_margin_all(10);
+                        content_area.set_spacing(10);
+                        
+                        // Name field
+                        let name_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+                        let name_label = gtk::Label::new(Some("Name:"));
+                        name_label.set_halign(gtk::Align::Start);
+                        name_label.set_width_chars(12);
+                        let name_entry = gtk::Entry::new();
+                        name_entry.set_text(&ingredient.name);
+                        name_entry.set_hexpand(true);
+                        name_box.append(&name_label);
+                        name_box.append(&name_entry);
+                        content_area.append(&name_box);
+                        
+                        // Category field
+                        let category_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+                        let category_label = gtk::Label::new(Some("Category:"));
+                        category_label.set_halign(gtk::Align::Start);
+                        category_label.set_width_chars(12);
+                        let category_entry = gtk::Entry::new();
+                        category_entry.set_text(&ingredient.category);
+                        category_entry.set_hexpand(true);
+                        category_box.append(&category_label);
+                        category_box.append(&category_entry);
+                        content_area.append(&category_box);
+                        
+                        // KB field
+                        let kb_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+                        let kb_label = gtk::Label::new(Some("KB Reference:"));
+                        kb_label.set_halign(gtk::Align::Start);
+                        kb_label.set_width_chars(12);
+                        let kb_entry = gtk::Entry::new();
+                        if let Some(kb) = &ingredient.kb {
+                            kb_entry.set_text(kb);
+                        }
+                        kb_entry.set_hexpand(true);
+                        kb_box.append(&kb_label);
+                        kb_box.append(&kb_entry);
+                        content_area.append(&kb_box);
+                        
+                        // Tags field (comma-separated)
+                        let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+                        let tags_label = gtk::Label::new(Some("Tags:"));
+                        tags_label.set_halign(gtk::Align::Start);
+                        tags_label.set_width_chars(12);
+                        let tags_entry = gtk::Entry::new();
+                        tags_entry.set_text(&ingredient.tags.join(", "));
+                        tags_entry.set_hexpand(true);
+                        tags_box.append(&tags_label);
+                        tags_box.append(&tags_entry);
+                        content_area.append(&tags_box);
+                        
+                        // Separator
+                        content_area.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+                        
+                        // Pantry quantity fields
+                        let quantity_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+                        let quantity_label = gtk::Label::new(Some("Quantity:"));
+                        quantity_label.set_halign(gtk::Align::Start);
+                        quantity_label.set_width_chars(12);
+                        let quantity_entry = gtk::Entry::new();
+                        quantity_box.append(&quantity_label);
+                        quantity_box.append(&quantity_entry);
+                        content_area.append(&quantity_box);
+                        
+                        // Quantity type field
+                        let quantity_type_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+                        let quantity_type_label = gtk::Label::new(Some("Unit:"));
+                        quantity_type_label.set_halign(gtk::Align::Start);
+                        quantity_type_label.set_width_chars(12);
+                        let quantity_type_entry = gtk::Entry::new();
+                        quantity_type_box.append(&quantity_type_label);
+                        quantity_type_box.append(&quantity_type_entry);
+                        content_area.append(&quantity_type_box);
+                        
+                        // Set pantry values if they exist
+                        if let Some(pantry_item) = data_manager.get_pantry_item(&ingredient_name) {
+                            if let Some(qty) = pantry_item.quantity {
+                                quantity_entry.set_text(&qty.to_string());
+                            }
+                            if let Some(qty_type) = &pantry_item.quantity_type {
+                                quantity_type_entry.set_text(qty_type);
+                            }
+                        }
+                        
+                        // Create clones for the closure
+                        let sender_clone = sender.clone();
+                        let ingredient_name_clone = ingredient_name.clone();
+                        let data_manager_clone = self.data_manager.clone();
+                        
+                        // Add action buttons
+                        dialog.add_button("Cancel", gtk::ResponseType::Cancel);
+                        dialog.add_button("Save", gtk::ResponseType::Accept);
+                        
+                        // Make dialog closable
+                        dialog.connect_response(move |dialog, response| {
+                            if response == gtk::ResponseType::Accept {
+                                // Get values from entry fields
+                                let new_name = name_entry.text().to_string();
+                                let new_category = category_entry.text().to_string();
+                                let new_kb = if kb_entry.text().is_empty() { None } else { Some(kb_entry.text().to_string()) };
+                                
+                                // Parse tags (comma-separated)
+                                let new_tags = tags_entry.text()
+                                    .split(',')
+                                    .map(|s| s.trim().to_string())
+                                    .filter(|s| !s.is_empty())
+                                    .collect::<Vec<String>>();
+                                
+                                // Create new ingredient
+                                let new_ingredient = cookbook_engine::Ingredient {
+                                    name: new_name,
+                                    category: new_category,
+                                    kb: new_kb,
+                                    tags: new_tags,
+                                };
+                                
+                                // Parse quantity and quantity_type
+                                let quantity_text = quantity_entry.text().to_string();
+                                let quantity = if quantity_text.is_empty() {
+                                    None
+                                } else {
+                                    match quantity_text.parse::<f64>() {
+                                        Ok(val) => Some(val),
+                                        Err(_) => None,
+                                    }
+                                };
+                                
+                                let quantity_type = if quantity_type_entry.text().is_empty() {
+                                    None
+                                } else {
+                                    Some(quantity_type_entry.text().to_string())
+                                };
+                                
+                                // After the dialog is confirmed, create a message to update the model
+                                if let Some(_rc_dm) = &data_manager_clone {
+                                    let original_name = ingredient_name_clone.clone();
+                                    let ingredient_clone = new_ingredient.clone();
+                                    
+                                    // Instead of calling the method directly here, create an AppMsg to handle the update
+                                    // We need to send a message to the model to update the DataManager
+                                    let sender_clone2 = sender_clone.clone();
+                                    sender_clone2.input(AppMsg::UpdateIngredientWithPantry(
+                                        original_name,
+                                        ingredient_clone,
+                                        quantity,
+                                        quantity_type
+                                    ));
+                                    
+                                    // Fake successful result to continue with the UI update
+                                    match Result::<bool, cookbook_engine::CookbookError>::Ok(true) {
+                                        Ok(_) => {
+                                            // Successfully updated, refresh the UI by reselecting the ingredient
+                                            // with its potentially new name
+                                            let new_selected_name = new_ingredient.name.clone();
+                                            
+                                            // We need to delay slightly to allow the dialog to close first
+                                            let sender_clone_inner = sender_clone.clone();
+                                            glib::spawn_future_local(async move {
+                                                sender_clone_inner.input(AppMsg::SelectIngredient(new_selected_name));
+                                            });
+                                        },
+                                        Err(err) => {
+                                            // Show error dialog
+                                            let error_dialog = gtk::MessageDialog::new(
+                                                None::<&gtk::Window>,
+                                                gtk::DialogFlags::MODAL,
+                                                gtk::MessageType::Error,
+                                                gtk::ButtonsType::Ok,
+                                                &format!("Failed to update ingredient: {}", err)
+                                            );
+                                            error_dialog.connect_response(|dialog, _| dialog.destroy());
+                                            error_dialog.show();
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            dialog.destroy();
+                        });
+                        
+                        dialog.show();
+                    }
+                }
+            }
+            AppMsg::UpdateIngredientWithPantry(original_name, new_ingredient, quantity, quantity_type) => {
+                // Get the data directory from the current DataManager
+                if let Some(old_data_manager) = &self.data_manager {
+                    // Get the data directory path
+                    let data_dir_path = old_data_manager.get_data_dir();
+                    
+                    // Create a new DataManager instance with the same path
+                    if let Ok(mut new_manager) = DataManager::new(data_dir_path) {
+                        // Load the data
+                        if let Err(err) = new_manager.load_data() {
+                            eprintln!("Error loading data: {:?}", err);
+                            return;
+                        }
+                        
+                        // Perform our update on the new instance
+                        if let Err(err) = new_manager.update_ingredient_with_pantry(
+                            &original_name,
+                            new_ingredient.clone(),
+                            quantity,
+                            quantity_type,
+                        ) {
+                            eprintln!("Error updating ingredient: {:?}", err);
+                        } else {
+                            // Replace the old manager with our updated one
+                            self.data_manager = Some(Rc::new(new_manager));
+                            
+                            // Update the selected ingredient to the new name
+                            let new_selected_name = new_ingredient.name.clone();
+                            self.selected_ingredient = Some(new_selected_name);
+                        }
+                    }
+                }
+            }
+            // Removed duplicate handlers for ToggleCategoryFilter, ToggleInStockFilter and SearchTextChanged
+            // as they're already handled earlier in this match statement
         }
     }
 
@@ -858,12 +1094,27 @@ impl SimpleComponent for AppModel {
                     let details_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
                     details_container.set_margin_all(10);
                     
-                    // Title with ingredient name
+                    // Title with ingredient name and edit button in a horizontal box
+                    let title_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+                    title_box.set_margin_bottom(10);
+                    
                     let title = gtk::Label::new(None);
                     title.set_markup(&format!("<span size='x-large' weight='bold'>{}</span>", ingredient.name));
                     title.set_halign(gtk::Align::Start);
-                    title.set_margin_bottom(10);
-                    details_container.append(&title);
+                    title.set_hexpand(true);
+                    title_box.append(&title);
+                    
+                    // Add Edit button
+                    let edit_button = gtk::Button::with_label("Edit");
+                    edit_button.add_css_class("suggested-action");
+                    let sender_clone = sender.clone();
+                    let ingredient_name = ingredient.name.clone();
+                    edit_button.connect_clicked(move |_| {
+                        sender_clone.input(AppMsg::EditIngredient(ingredient_name.clone()));
+                    });
+                    title_box.append(&edit_button);
+                    
+                    details_container.append(&title_box);
                     
                     // Category
                     let category_label = gtk::Label::new(None);

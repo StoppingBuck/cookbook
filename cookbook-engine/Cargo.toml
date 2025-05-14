@@ -8,3 +8,4 @@ serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 thiserror = "1.0"
 quick-xml = "0.37.5"
+chrono = "0.4.41"

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 use std::collections::HashMap;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Ingredient {
     pub name: String,
     pub category: String,
@@ -82,6 +82,12 @@ pub enum CookbookError {
     
     #[error("Failed to list directory: {0}")]
     ListDirError(String),
+    
+    #[error("Failed to write file: {0}")]
+    WriteError(String),
+    
+    #[error("Failed to update ingredient: {0}")]
+    UpdateError(String),
 }
 
 impl Ingredient {
@@ -89,12 +95,32 @@ impl Ingredient {
         let content = fs::read_to_string(&path).map_err(|e| CookbookError::ReadError(e.to_string()))?;
         serde_yaml::from_str(&content).map_err(|e| CookbookError::ParseError(e.to_string()))
     }
+    
+    pub fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), CookbookError> {
+        let yaml = serde_yaml::to_string(self)
+            .map_err(|e| CookbookError::ParseError(format!("Failed to serialize ingredient: {}", e)))?;
+        
+        fs::write(&path, yaml)
+            .map_err(|e| CookbookError::WriteError(format!("Failed to write ingredient file: {}", e)))?;
+            
+        Ok(())
+    }
 }
 
 impl Pantry {
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, CookbookError> {
         let content = fs::read_to_string(&path).map_err(|e| CookbookError::ReadError(e.to_string()))?;
         serde_yaml::from_str(&content).map_err(|e| CookbookError::ParseError(e.to_string()))
+    }
+    
+    pub fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), CookbookError> {
+        let yaml = serde_yaml::to_string(self)
+            .map_err(|e| CookbookError::ParseError(format!("Failed to serialize pantry: {}", e)))?;
+        
+        fs::write(&path, yaml)
+            .map_err(|e| CookbookError::WriteError(format!("Failed to write pantry file: {}", e)))?;
+            
+        Ok(())
     }
 }
 
@@ -452,5 +478,127 @@ impl DataManager {
             }
         }
         None
+    }
+    
+    /// Updates an ingredient in the pantry with new quantity and quantity_type values
+    pub fn update_pantry_item(&mut self, 
+                             ingredient_name: &str,
+                             quantity: Option<f64>,
+                             quantity_type: Option<String>) -> Result<bool, CookbookError> {
+        // Make sure we have a pantry loaded
+        if self.pantry.is_none() {
+            return Err(CookbookError::UpdateError(format!("No pantry loaded")));
+        }
+        
+        let pantry = self.pantry.as_mut().unwrap();
+        
+        // Check if the ingredient exists in the ingredients
+        if !self.ingredients.contains_key(ingredient_name) {
+            return Err(CookbookError::UpdateError(
+                format!("Ingredient '{}' does not exist", ingredient_name)
+            ));
+        }
+        
+        // Get the current date for the last_updated field
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        
+        // Find the pantry item if it exists
+        let pantry_item_index = pantry.items.iter().position(|item| item.ingredient == ingredient_name);
+        
+        if let Some(index) = pantry_item_index {
+            // Update the existing pantry item
+            pantry.items[index].quantity = quantity;
+            pantry.items[index].quantity_type = quantity_type;
+            pantry.items[index].last_updated = today;
+        } else {
+            // Create a new pantry item
+            let new_item = PantryItem {
+                ingredient: ingredient_name.to_string(),
+                quantity,
+                quantity_type,
+                last_updated: today,
+            };
+            
+            pantry.items.push(new_item);
+        }
+        
+        // Save the updated pantry to file
+        let pantry_path = self.data_dir.join("pantry.yaml");
+        pantry.to_file(pantry_path)?;
+        
+        Ok(true)
+    }
+    
+    /// Updates an ingredient's properties (name, category, kb, tags)
+    pub fn update_ingredient(&mut self, 
+                            original_name: &str,
+                            new_ingredient: Ingredient) -> Result<bool, CookbookError> {
+        // Check if the original ingredient exists
+        if !self.ingredients.contains_key(original_name) {
+            return Err(CookbookError::UpdateError(
+                format!("Ingredient '{}' does not exist", original_name)
+            ));
+        }
+        
+        // Check if the new name conflicts with an existing ingredient (if name is changing)
+        if original_name != new_ingredient.name && self.ingredients.contains_key(&new_ingredient.name) {
+            return Err(CookbookError::UpdateError(
+                format!("Cannot rename: ingredient '{}' already exists", new_ingredient.name)
+            ));
+        }
+        
+        let ingredients_dir = self.data_dir.join("ingredients");
+        let old_path = ingredients_dir.join(format!("{}.yaml", original_name.replace(" ", "_")));
+        let new_path = ingredients_dir.join(format!("{}.yaml", new_ingredient.name.replace(" ", "_")));
+        
+        // Handle name changes
+        if original_name != new_ingredient.name {
+            // Update any pantry reference
+            if let Some(pantry) = self.pantry.as_mut() {
+                for item in &mut pantry.items {
+                    if item.ingredient == original_name {
+                        item.ingredient = new_ingredient.name.clone();
+                    }
+                }
+                
+                // Save the updated pantry
+                let pantry_path = self.data_dir.join("pantry.yaml");
+                pantry.to_file(pantry_path)?;
+            }
+            
+            // Remove the old ingredient from our HashMap
+            self.ingredients.remove(original_name);
+        }
+        
+        // Update/add the ingredient in our HashMap
+        self.ingredients.insert(new_ingredient.name.clone(), new_ingredient.clone());
+        
+        // Write the ingredient to file
+        new_ingredient.to_file(&new_path)?;
+        
+        // If the name changed, remove the old file
+        if original_name != new_ingredient.name && old_path.exists() {
+            fs::remove_file(old_path)
+                .map_err(|e| CookbookError::WriteError(format!("Failed to remove old ingredient file: {}", e)))?;
+        }
+        
+        Ok(true)
+    }
+    
+    /// Updates an ingredient with potential changes to both ingredient properties and pantry values
+    pub fn update_ingredient_with_pantry(&mut self,
+                                       original_name: &str,
+                                       new_ingredient: Ingredient,
+                                       quantity: Option<f64>,
+                                       quantity_type: Option<String>) -> Result<bool, CookbookError> {
+        // First update the ingredient itself
+        self.update_ingredient(original_name, new_ingredient.clone())?;
+        
+        // Then update the pantry if necessary
+        if quantity.is_some() || quantity_type.is_some() {
+            self.update_pantry_item(&new_ingredient.name, quantity, quantity_type)?;
+        }
+        
+        Ok(true)
     }
 }
