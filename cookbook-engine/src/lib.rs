@@ -176,6 +176,10 @@ impl DataManager {
         Ok(manager)
     }
     
+    pub fn get_data_dir(&self) -> &Path {
+        &self.data_dir
+    }
+    
     pub fn load_data(&mut self) -> Result<(), CookbookError> {
         self.load_ingredients()?;
         self.load_recipes()?;
@@ -317,5 +321,136 @@ impl DataManager {
                 recipe.ingredients.iter().any(|ing| ing.ingredient == ingredient_name)
             })
             .collect()
+    }
+
+    /// Filters ingredients based on search text, categories, and stock status
+    pub fn filter_ingredients(&self, 
+                             search_text: &str, 
+                             categories: &[String], 
+                             in_stock_only: bool) -> Vec<&Ingredient> {
+        self.get_all_ingredients()
+            .into_iter()
+            .filter(|ingredient| {
+                // Match search text
+                let matches_search = search_text.is_empty() || 
+                    ingredient.name.to_lowercase().contains(&search_text.to_lowercase());
+                    
+                // Match category filter
+                let matches_category = categories.is_empty() || 
+                    categories.contains(&ingredient.category);
+                    
+                // Match stock status
+                let matches_stock = !in_stock_only || self.is_in_pantry(&ingredient.name);
+                
+                matches_search && matches_category && matches_stock
+            })
+            .collect()
+    }
+
+    /// Returns all available ingredient categories
+    pub fn get_all_ingredient_categories(&self) -> Vec<String> {
+        let mut categories = self.get_all_ingredients()
+            .iter()
+            .map(|ingredient| ingredient.category.clone())
+            .collect::<std::collections::HashSet<String>>()
+            .into_iter()
+            .collect::<Vec<String>>();
+        
+        categories.sort();
+        categories
+    }
+
+    /// Groups ingredients by their category
+    pub fn get_ingredients_by_category(&self) -> HashMap<String, Vec<&Ingredient>> {
+        let mut result = HashMap::new();
+        
+        for ingredient in self.get_all_ingredients() {
+            result
+                .entry(ingredient.category.clone())
+                .or_insert_with(Vec::new)
+                .push(ingredient);
+        }
+        
+        // Sort ingredients within each category
+        for (_category, ingredients) in &mut result {
+            ingredients.sort_by(|a, b| a.name.cmp(&b.name));
+        }
+        
+        result
+    }
+    
+    /// Groups pantry items by ingredient category
+    pub fn get_pantry_items_by_category(&self) -> HashMap<String, Vec<(&Ingredient, Option<&PantryItem>)>> {
+        let mut result = HashMap::new();
+        
+        for ingredient in self.get_all_ingredients() {
+            // Find the matching pantry item, if any
+            let pantry_item = self.get_pantry_item(&ingredient.name);
+            
+            result
+                .entry(ingredient.category.clone())
+                .or_insert_with(Vec::new)
+                .push((ingredient, pantry_item));
+        }
+        
+        // Sort ingredients within each category
+        for (_category, items) in &mut result {
+            items.sort_by(|a, b| a.0.name.cmp(&b.0.name));
+        }
+        
+        result
+    }
+    
+    /// Search for recipes matching a text query
+    pub fn search_recipes(&self, query: &str) -> Vec<&Recipe> {
+        let query_lower = query.to_lowercase();
+        
+        self.recipes.iter()
+            .filter(|recipe| {
+                // Search in title
+                recipe.title.to_lowercase().contains(&query_lower) ||
+                // Search in ingredients
+                recipe.ingredients.iter().any(|ing| 
+                    ing.ingredient.to_lowercase().contains(&query_lower)
+                ) ||
+                // Search in instructions
+                recipe.instructions.to_lowercase().contains(&query_lower) ||
+                // Search in tags
+                recipe.tags.as_ref().map_or(false, |tags| 
+                    tags.iter().any(|tag| tag.to_lowercase().contains(&query_lower))
+                )
+            })
+            .collect()
+    }
+    
+    /// Returns a map of ingredient names and the recipes that use them
+    pub fn get_ingredient_usage(&self) -> HashMap<String, Vec<&Recipe>> {
+        let mut result = HashMap::new();
+        
+        // Collect all unique ingredient names
+        for ingredient in self.get_all_ingredients() {
+            result.entry(ingredient.name.clone()).or_insert_with(Vec::new);
+        }
+        
+        // Match recipes to ingredients
+        for recipe in &self.recipes {
+            for ing in &recipe.ingredients {
+                if let Some(recipes) = result.get_mut(&ing.ingredient) {
+                    recipes.push(recipe);
+                }
+            }
+        }
+        
+        result
+    }
+    
+    /// Get KB entry for a specific ingredient
+    pub fn get_kb_entry_for_ingredient(&self, ingredient_name: &str) -> Option<&KnowledgeBaseEntry> {
+        if let Some(ingredient) = self.get_ingredient(ingredient_name) {
+            if let Some(kb_slug) = &ingredient.kb {
+                return self.get_kb_entry(kb_slug);
+            }
+        }
+        None
     }
 }

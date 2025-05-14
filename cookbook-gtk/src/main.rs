@@ -20,6 +20,7 @@ use std::path::PathBuf;             // Import PathBuf for handling file paths
 use std::env;                       // Import env for accessing environment variables
 use std::rc::Rc;                    // Import Rc for reference counting
 use relm4::gtk;                     // Import GTK bindings from relm4
+use relm4::gtk::glib;               // Import glib for async operations
 use relm4::ComponentParts;          // Import to create component parts with model and widgets
 use relm4::ComponentSender;         // Import to send messages between components
 use relm4::SimpleComponent;         // Import trait for implementing UI components
@@ -292,7 +293,8 @@ impl SimpleComponent for AppModel {
         
         // Add recipes to list if available
         if let Some(ref dm) = model.data_manager {
-            let recipes = dm.get_all_recipes();
+            // Use empty search text initially to get all recipes
+            let recipes = dm.search_recipes("");
             if !recipes.is_empty() {
                 for recipe in recipes {
                     let row = gtk::ListBoxRow::new();
@@ -323,18 +325,16 @@ impl SimpleComponent for AppModel {
         
         // Recipe selection handler - callback for recipes_list_box.connect_row_selected
         // - Triggered whenever a row in the recipe list is selected
-        // - Gets the index of the selected row
-        // - Fetches the corresponding recipe from the DataManager
+        // - Gets the recipe title from the row label directly
         // - Sends an AppMsg::SelectRecipe message with the recipe title
         let sender_clone = sender.clone();
-        let dm_clone = model.data_manager.clone();
         recipes_list_box.connect_row_selected(move |_list, row_opt| {
             if let Some(row) = row_opt {
-                if let Some(ref dm) = dm_clone {
-                    let recipes = dm.get_all_recipes();
-                    if row.index() >= 0 && (row.index() as usize) < recipes.len() {
-                        let recipe = &recipes[row.index() as usize];
-                        sender_clone.input(AppMsg::SelectRecipe(recipe.title.clone()));
+                if let Some(child) = row.child() {
+                    // Extract the recipe title directly from the label
+                    if let Some(label) = child.downcast_ref::<gtk::Label>() {
+                        let recipe_title = label.text().to_string();
+                        sender_clone.input(AppMsg::SelectRecipe(recipe_title));
                     }
                 }
             }
@@ -404,16 +404,11 @@ impl SimpleComponent for AppModel {
         let category_filters_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         category_filters_box.set_margin_bottom(10);
         
-        // Get unique categories from ingredients
+        // Get unique categories from ingredients using the engine's method
         let mut categories = Vec::new();
         if let Some(ref dm) = model.data_manager {
-            for ingredient in dm.get_all_ingredients() {
-                if !categories.contains(&ingredient.category) {
-                    categories.push(ingredient.category.clone());
-                }
-            }
+            categories = dm.get_all_ingredient_categories();
         }
-        categories.sort(); // Sort alphabetically
         
         // Create filter checkboxes
         for category in &categories {
@@ -466,35 +461,34 @@ impl SimpleComponent for AppModel {
         
         let pantry_list_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
         
-        // Group by categories
+        // Group by categories using the engine method
         let mut pantry_items_by_category: std::collections::HashMap<String, Vec<(String, Option<String>, Option<String>, bool)>> = std::collections::HashMap::new();
         
         if let Some(ref dm) = model.data_manager {
-            let pantry = dm.get_pantry();
+            // Use the engine's method to get pantry items grouped by category
+            let items_by_category = dm.get_pantry_items_by_category();
             
-            // Create a map of ingredient name -> is in stock
-            let mut in_pantry = std::collections::HashMap::new();
-            if let Some(pantry) = pantry {
-                for item in &pantry.items {
-                    // Convert f64 quantity to String for display
-                    let quantity_str = item.quantity.map(|q| q.to_string());
-                    in_pantry.insert(item.ingredient.clone(), (quantity_str, item.quantity_type.clone()));
-                }
-            }
-            
-            // Group ingredients by category
-            for ingredient in dm.get_all_ingredients() {
-                let is_in_stock = in_pantry.contains_key(&ingredient.name);
-                let (quantity, quantity_type) = if let Some((q, t)) = in_pantry.get(&ingredient.name) {
-                    (q.clone(), t.clone())
-                } else {
-                    (None, None)
-                };
+            // Convert to the format expected by the UI
+            for (category, items) in items_by_category {
+                let mut category_items = Vec::new();
                 
-                pantry_items_by_category
-                    .entry(ingredient.category.clone())
-                    .or_default()
-                    .push((ingredient.name.clone(), quantity, quantity_type, is_in_stock));
+                for (ingredient, pantry_item) in items {
+                    let is_in_stock = pantry_item.is_some();
+                    let (quantity, quantity_type) = if let Some(item) = pantry_item {
+                        (item.quantity.map(|q| q.to_string()), item.quantity_type.clone())
+                    } else {
+                        (None, None)
+                    };
+                    
+                    category_items.push((
+                        ingredient.name.clone(), 
+                        quantity, 
+                        quantity_type, 
+                        is_in_stock
+                    ));
+                }
+                
+                pantry_items_by_category.insert(category, category_items);
             }
             
             // Sort categories and ingredients
@@ -820,17 +814,32 @@ impl SimpleComponent for AppModel {
         if self.current_tab == Tab::Recipes && self.selected_recipe.is_some() {
             let recipe_name = self.selected_recipe.as_ref().unwrap();
             
-            if let Some(ref dm) = self.data_manager {
-                let recipes = dm.get_all_recipes();
-                
-                // Find the index of the selected recipe
-                if let Some(index) = recipes.iter().position(|recipe| recipe.title == *recipe_name) {
-                    // Get the row at that index
-                    if let Some(row) = widgets.recipes_list_box.row_at_index(index as i32) {
-                        // Select the row (this will highlight it in the UI)
-                        widgets.recipes_list_box.select_row(Some(&row));
+            // Find the row with the matching recipe title
+            let mut found = false;
+            // Iterate through the rows starting from index 0
+            let mut i = 0;
+            while let Some(row) = widgets.recipes_list_box.row_at_index(i) {
+                i += 1; // Move to next index
+                if let Some(child) = row.child() {
+                    if let Some(label) = child.downcast_ref::<gtk::Label>() {
+                        if label.text() == *recipe_name {
+                            // Select the row (this will highlight it in the UI)
+                            widgets.recipes_list_box.select_row(Some(&row));
+                            found = true;
+                            break;
+                        }
                     }
                 }
+            }
+            
+            // If the recipe is not in the current filtered list, clear the filter
+            if !found && !self.search_text.is_empty() {
+                // Reset search text next time update runs
+                // This is a bit of a hack, but it prevents recursion issues
+                let sender_clone = sender.clone();
+                glib::spawn_future_local(async move {
+                    sender_clone.input(AppMsg::SearchTextChanged(String::new()));
+                });
             }
         }
         
@@ -885,6 +894,33 @@ impl SimpleComponent for AppModel {
                         details_container.append(&tags_box);
                     }
                     
+                    // Knowledge Base Link (if available)
+                    if let Some(kb_entry) = dm.get_kb_entry_for_ingredient(&ingredient.name) {
+                        let kb_box = gtk::Box::new(gtk::Orientation::Vertical, 5);
+                        kb_box.set_margin_top(10);
+                        kb_box.set_margin_bottom(10);
+                        
+                        let kb_label = gtk::Label::new(None);
+                        kb_label.set_markup("<b>Knowledge Base Entry:</b>");
+                        kb_label.set_halign(gtk::Align::Start);
+                        kb_box.append(&kb_label);
+                        
+                        let kb_button = gtk::Button::new();
+                        kb_button.set_label(&kb_entry.title);
+                        kb_button.set_halign(gtk::Align::Start);
+                        kb_button.add_css_class("link-button");
+                        
+                        let sender_clone = sender.clone();
+                        let kb_slug = kb_entry.slug.clone();
+                        kb_button.connect_clicked(move |_| {
+                            sender_clone.input(AppMsg::SwitchTab(Tab::KnowledgeBase));
+                            sender_clone.input(AppMsg::SelectKnowledgeBaseEntry(kb_slug.clone()));
+                        });
+                        
+                        kb_box.append(&kb_button);
+                        details_container.append(&kb_box);
+                    }
+                    
                     // Pantry information (quantity, etc.)
                     if let Some(pantry) = dm.get_pantry() {
                         if let Some(pantry_item) = pantry.items.iter().find(|item| item.ingredient == ingredient.name) {
@@ -918,7 +954,11 @@ impl SimpleComponent for AppModel {
                     }
                     
                     // Recipes with this ingredient
-                    let recipes_with_ingredient = dm.get_recipes_with_ingredient(&ingredient.name);
+                    // We can use either get_recipes_with_ingredient or ingredient_usage for this
+                    // Let's use get_ingredient_usage to demonstrate its use
+                    let ingredient_usage = dm.get_ingredient_usage();
+                    let recipes_with_ingredient = ingredient_usage.get(&ingredient.name).cloned().unwrap_or_else(Vec::new);
+                    
                     if !recipes_with_ingredient.is_empty() {
                         let recipes_header = gtk::Label::new(None);
                         recipes_header.set_markup(&format!("<span size='large' weight='bold'>Recipes with {}:</span>", ingredient.name));
@@ -1284,25 +1324,18 @@ impl SimpleComponent for AppModel {
                     if let Some(ref dm) = self.data_manager {
                         let _pantry = dm.get_pantry(); // Prefix with underscore to avoid unused variable warning
                 
-                // Group ingredients by category
+                // Use engine method to filter ingredients
+                let filtered_ingredients = dm.filter_ingredients(
+                    &self.search_text,
+                    &self.selected_pantry_categories,
+                    self.show_in_stock_only
+                );
+                
+                // Convert filtered ingredients to the format expected by the UI
                 let mut pantry_items_by_category: std::collections::HashMap<String, Vec<(String, Option<String>, Option<String>, bool)>> = std::collections::HashMap::new();
                 
-                for ingredient in dm.get_all_ingredients() {
+                for ingredient in filtered_ingredients {
                     let is_in_stock = dm.is_in_pantry(&ingredient.name);
-                    
-                    // Apply filters
-                    if self.show_in_stock_only && !is_in_stock {
-                        continue; // Skip items not in stock if filter is active
-                    }
-                    
-                    if !self.selected_pantry_categories.is_empty() && !self.selected_pantry_categories.contains(&ingredient.category) {
-                        continue; // Skip items not in selected categories
-                    }
-                    
-                    // Apply search filter if any
-                    if !self.search_text.is_empty() && !ingredient.name.to_lowercase().contains(&self.search_text.to_lowercase()) {
-                        continue; // Skip items not matching search
-                    }
                     
                     // Get quantity information if in pantry
                     let (quantity, quantity_type) = if let Some(pantry_item) = dm.get_pantry_item(&ingredient.name) {
@@ -1391,6 +1424,55 @@ impl SimpleComponent for AppModel {
                 let no_data_label = gtk::Label::new(Some("No ingredient data available"));
                 no_data_label.set_margin_all(10);
                 widgets.pantry_list.append(&no_data_label);
+            }
+        }
+        
+        // Update recipes list when search text changes
+        if self.current_tab == Tab::Recipes && self.selected_recipe.is_none() {
+            // Only update recipe list if no recipe is currently selected
+            // This prevents conflicts between selection and filtering
+            
+            // Clear the recipes list
+            while let Some(child) = widgets.recipes_list_box.first_child() {
+                widgets.recipes_list_box.remove(&child);
+            }
+            
+            if let Some(ref dm) = self.data_manager {
+                // Use engine method to search recipes
+                let filtered_recipes = dm.search_recipes(&self.search_text);
+                
+                if !filtered_recipes.is_empty() {
+                    for recipe in filtered_recipes {
+                        let row = gtk::ListBoxRow::new();
+                        let title_label = gtk::Label::new(Some(&recipe.title));
+                        title_label.set_halign(gtk::Align::Start);
+                        title_label.set_margin_start(5);
+                        title_label.set_margin_end(5);
+                        title_label.set_margin_top(5);
+                        title_label.set_margin_bottom(5);
+                        row.set_child(Some(&title_label));
+                        
+                        widgets.recipes_list_box.append(&row);
+                    }
+                } else {
+                    // No recipes match the search
+                    let no_recipes_row = gtk::ListBoxRow::new();
+                    let no_recipes_label = if self.search_text.is_empty() {
+                        gtk::Label::new(Some("No recipes available"))
+                    } else {
+                        gtk::Label::new(Some(&format!("No recipes match '{}'", self.search_text)))
+                    };
+                    no_recipes_label.set_margin_all(10);
+                    no_recipes_row.set_child(Some(&no_recipes_label));
+                    widgets.recipes_list_box.append(&no_recipes_row);
+                }
+            } else {
+                // Data manager not available
+                let no_data_row = gtk::ListBoxRow::new();
+                let no_data_label = gtk::Label::new(Some("Failed to load recipe data"));
+                no_data_label.set_margin_all(10);
+                no_data_row.set_child(Some(&no_data_label));
+                widgets.recipes_list_box.append(&no_data_row);
             }
         }
     }
