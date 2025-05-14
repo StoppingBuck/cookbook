@@ -6,9 +6,17 @@ items:
   last_updated: 2025-05-14
 - ingredient: tomato
   quantity: null
-  quantity_type: null
+  quantity_type: ''
   last_updated: 2025-05-10
 - ingredient: chicken beast
   quantity: 1.0
   quantity_type: ton
+  last_updated: 2025-05-14
+- ingredient: milk
+  quantity: 1.0
+  quantity_type: ''
+  last_updated: 2025-05-14
+- ingredient: flour
+  quantity: 2.0
+  quantity_type: ''
   last_updated: 2025-05-14

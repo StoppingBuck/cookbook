@@ -478,9 +478,9 @@ impl SimpleComponent for AppModel {
                 for (ingredient, pantry_item) in items {
                     let is_in_stock = pantry_item.is_some();
                     let (quantity, quantity_type) = if let Some(item) = pantry_item {
-                        (item.quantity.map(|q| q.to_string()), item.quantity_type.clone())
+                        (item.quantity.map(|q| q.to_string()), Some(item.quantity_type.clone()))
                     } else {
-                        (None, None)
+                        (None, Some(String::new()))
                     };
                     
                     category_items.push((
@@ -517,9 +517,11 @@ impl SimpleComponent for AppModel {
                         // Create the item label with quantity if available
                         let mut label_text = name.clone();
                         if let (Some(q), Some(t)) = (quantity, quantity_type) {
-                            label_text = format!("{} ({} {})", name, q, t);
-                        } else if let (Some(q), None) = (quantity, quantity_type) {
-                            label_text = format!("{} ({})", name, q);
+                            if t.is_empty() {
+                                label_text = format!("{} ({})", name, q);
+                            } else {
+                                label_text = format!("{} ({} {})", name, q, t);
+                            }
                         }
                         
                         // Add checkmark for in-stock items
@@ -737,11 +739,14 @@ impl SimpleComponent for AppModel {
         ComponentParts { model, widgets }
     }
     
+    // == UPDATE STARTS HERE ==
     // update handles incoming messages (e.g. switching tabs, selecting a recipe) and updates the model state
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
+            // Message: User switches tabs
             AppMsg::SwitchTab(new_tab) => {
-                self.current_tab = new_tab;
+                self.current_tab = new_tab; // Update the current tab
+                
                 // Reset selection when changing tabs
                 if self.current_tab == Tab::Recipes {
                     self.selected_recipe = None;
@@ -750,26 +755,34 @@ impl SimpleComponent for AppModel {
                     self.selected_ingredient = None;
                 }
             }
+            // Message: User clicks on the About button
             AppMsg::ShowAbout => {
                 self.show_about_dialog = true;
             }
+            // Message: User clicks on the Help button
             AppMsg::ShowHelp => {
                 self.show_help_dialog = true;
             }
+            // Message: User closes the About or Help dialog
             AppMsg::ResetDialogs => {
                 // Reset all dialog flags
                 self.show_about_dialog = false;
                 self.show_help_dialog = false;
             }
+            // Message: User selects a recipe
             AppMsg::SelectRecipe(recipe_name) => {
                 self.selected_recipe = Some(recipe_name);
             }
+            // Message: User selects an ingredient
             AppMsg::SelectIngredient(ingredient_name) => {
                 self.selected_ingredient = Some(ingredient_name);
             }
+            // Message: User selects a Knowledge Base entry
             AppMsg::SelectKnowledgeBaseEntry(slug) => {
                 self.selected_kb_entry = Some(slug);
             }
+            // Message: User toggles a category filter
+            // - If the category is selected, add it to the selected categories
             AppMsg::ToggleCategoryFilter(category, is_selected) => {
                 if is_selected && !self.selected_pantry_categories.contains(&category) {
                     self.selected_pantry_categories.push(category);
@@ -777,12 +790,15 @@ impl SimpleComponent for AppModel {
                     self.selected_pantry_categories.retain(|c| c != &category);
                 }
             }
+            // Message: User toggles the in-stock filter
             AppMsg::ToggleInStockFilter(show_in_stock_only) => {
                 self.show_in_stock_only = show_in_stock_only;
             }
+            // Message: User types in the search bar
             AppMsg::SearchTextChanged(text) => {
                 self.search_text = text;
             }
+            // Message: User clicks on the Edit Ingredient button
             AppMsg::EditIngredient(ingredient_name) => {
                 // Handle the edit ingredient action by opening a dialog
                 if let Some(ref data_manager) = self.data_manager {
@@ -842,7 +858,7 @@ impl SimpleComponent for AppModel {
                         tags_label.set_halign(gtk::Align::Start);
                         tags_label.set_width_chars(12);
                         let tags_entry = gtk::Entry::new();
-                        tags_entry.set_text(&ingredient.tags.join(", "));
+                        tags_entry.set_text(&ingredient.tags.clone().unwrap_or_default().join(", "));
                         tags_entry.set_hexpand(true);
                         tags_box.append(&tags_label);
                         tags_box.append(&tags_entry);
@@ -876,9 +892,7 @@ impl SimpleComponent for AppModel {
                             if let Some(qty) = pantry_item.quantity {
                                 quantity_entry.set_text(&qty.to_string());
                             }
-                            if let Some(qty_type) = &pantry_item.quantity_type {
-                                quantity_type_entry.set_text(qty_type);
-                            }
+                            quantity_type_entry.set_text(&pantry_item.quantity_type);
                         }
                         
                         // Create clones for the closure
@@ -892,6 +906,8 @@ impl SimpleComponent for AppModel {
                         
                         // Make dialog closable
                         dialog.connect_response(move |dialog, response| {
+                            
+                            // If the user clicks "Save", we need to update the ingredient
                             if response == gtk::ResponseType::Accept {
                                 // Get values from entry fields
                                 let new_name = name_entry.text().to_string();
@@ -910,7 +926,7 @@ impl SimpleComponent for AppModel {
                                     name: new_name,
                                     category: new_category,
                                     kb: new_kb,
-                                    tags: new_tags,
+                                    tags: Some(new_tags),
                                 };
                                 
                                 // Parse quantity and quantity_type
@@ -923,12 +939,9 @@ impl SimpleComponent for AppModel {
                                         Err(_) => None,
                                     }
                                 };
-                                
-                                let quantity_type = if quantity_type_entry.text().is_empty() {
-                                    None
-                                } else {
-                                    Some(quantity_type_entry.text().to_string())
-                                };
+                                // Even if empty, we'll send Some with an empty string
+                                // This matches our new PantryItem struct which uses String instead of Option<String>
+                                let quantity_type = Some(quantity_type_entry.text().to_string());
                                 
                                 // After the dialog is confirmed, create a message to update the model
                                 if let Some(_rc_dm) = &data_manager_clone {
@@ -974,22 +987,20 @@ impl SimpleComponent for AppModel {
                                 }
                             }
                             
-                            dialog.destroy();
+                            dialog.destroy(); // Close the dialog
                         });
                         
-                        dialog.show();
+                        dialog.show(); // Show the dialog
                     }
                 }
             }
+            // Message: User updates an ingredient with pantry data
             AppMsg::UpdateIngredientWithPantry(original_name, new_ingredient, quantity, quantity_type) => {
-                // Get the data directory from the current DataManager
+                // We need to create a new DataManager to apply our changes #TODO: This is a bit inefficient, we should be able to update in place
                 if let Some(old_data_manager) = &self.data_manager {
-                    // Get the data directory path
-                    let data_dir_path = old_data_manager.get_data_dir();
-                    
                     // Create a new DataManager instance with the same path
-                    if let Ok(mut new_manager) = DataManager::new(data_dir_path) {
-                        // Load the data
+                    if let Ok(mut new_manager) = DataManager::new(old_data_manager.get_data_dir()) {
+                        // Load ingredients and pantry data first (but not recipes yet)
                         if let Err(err) = new_manager.load_data() {
                             eprintln!("Error loading data: {:?}", err);
                             return;
@@ -1010,18 +1021,30 @@ impl SimpleComponent for AppModel {
                             // Update the selected ingredient to the new name
                             let new_selected_name = new_ingredient.name.clone();
                             self.selected_ingredient = Some(new_selected_name);
+                            
+                            // Force a full UI refresh by triggering a tab switch and back
+                            // This ensures that when we next view recipes, they won't be duplicated
+                            if self.current_tab == Tab::Recipes {
+                                let sender_clone = sender.clone();
+                                glib::spawn_future_local(async move {
+                                    // Switch to another tab and back to force a complete refresh
+                                    sender_clone.input(AppMsg::SwitchTab(Tab::Pantry));
+                                    sender_clone.input(AppMsg::SwitchTab(Tab::Recipes));
+                                });
+                            }
                         }
                     }
                 }
             }
-            // Removed duplicate handlers for ToggleCategoryFilter, ToggleInStockFilter and SearchTextChanged
-            // as they're already handled earlier in this match statement
         }
     }
+    // == UPDATE ENDS HERE ==
 
+    // == UPDATE_VIEW STARTS HERE ==
     // update_view updates the UI based on the current model state
     fn update_view(&self, widgets: &mut Self::Widgets, sender: ComponentSender<Self>) {
-        // Update stack page based on current tab
+        
+        // Update the main stack to show the current tab
         match self.current_tab {
             Tab::Recipes => widgets.main_stack.set_visible_child_name("recipes"),
             Tab::Pantry => widgets.main_stack.set_visible_child_name("pantry"),
@@ -1029,7 +1052,7 @@ impl SimpleComponent for AppModel {
             Tab::Settings => widgets.main_stack.set_visible_child_name("settings"),
         }
 
-        // Update sidebar button styling
+        // Update sidebar button styles based on the current tab
         for (i, button) in widgets.sidebar_buttons.iter().enumerate() {
             let tab = match i {
                 0 => Tab::Recipes,
@@ -1039,6 +1062,7 @@ impl SimpleComponent for AppModel {
                 _ => continue,
             };
 
+            // Remove the "suggested-action" class from all buttons except the current tab (common GTK pattern for showing active button)
             if tab == self.current_tab {
                 button.add_css_class("suggested-action");
             } else {
@@ -1050,9 +1074,8 @@ impl SimpleComponent for AppModel {
         if self.current_tab == Tab::Recipes && self.selected_recipe.is_some() {
             let recipe_name = self.selected_recipe.as_ref().unwrap();
             
-            // Find the row with the matching recipe title
+            // Find the row with the matching recipe title by iterating through the list box
             let mut found = false;
-            // Iterate through the rows starting from index 0
             let mut i = 0;
             while let Some(row) = widgets.recipes_list_box.row_at_index(i) {
                 i += 1; // Move to next index
@@ -1088,6 +1111,7 @@ impl SimpleComponent for AppModel {
                 widgets.pantry_details.remove(&child);
             }
             
+            // Find the selected ingredient in the data manager
             if let Some(ref dm) = self.data_manager {
                 if let Some(ingredient) = dm.get_ingredient(ingredient_name) {
                     // Create a small details view
@@ -1124,25 +1148,27 @@ impl SimpleComponent for AppModel {
                     details_container.append(&category_label);
                     
                     // Tags (if any)
-                    if !ingredient.tags.is_empty() {
-                        let tags_label = gtk::Label::new(None);
-                        tags_label.set_markup("<b>Tags:</b>");
-                        tags_label.set_halign(gtk::Align::Start);
-                        tags_label.set_margin_bottom(5);
-                        details_container.append(&tags_label);
-                        
-                        let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-                        tags_box.set_margin_start(10);
-                        tags_box.set_margin_bottom(10);
-                        
-                        for tag in &ingredient.tags {
-                            let tag_button = gtk::Button::new();
-                            tag_button.set_label(tag);
-                            tag_button.add_css_class("tag");
-                            tags_box.append(&tag_button);
+                    if let Some(ref tags) = ingredient.tags {
+                        if !tags.is_empty() {
+                            let tags_label = gtk::Label::new(None);
+                            tags_label.set_markup("<b>Tags:</b>");
+                            tags_label.set_halign(gtk::Align::Start);
+                            tags_label.set_margin_bottom(5);
+                            details_container.append(&tags_label);
+                            
+                            let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+                            tags_box.set_margin_start(10);
+                            tags_box.set_margin_bottom(10);
+                            
+                            for tag in tags {
+                                let tag_button = gtk::Button::new();
+                                tag_button.set_label(tag);
+                                tag_button.add_css_class("tag");
+                                tags_box.append(&tag_button);
+                            }
+                            
+                            details_container.append(&tags_box);
                         }
-                        
-                        details_container.append(&tags_box);
                     }
                     
                     // Knowledge Base Link (if available)
@@ -1173,21 +1199,25 @@ impl SimpleComponent for AppModel {
                     }
                     
                     // Pantry information (quantity, etc.)
-                    if let Some(pantry) = dm.get_pantry() {
-                        if let Some(pantry_item) = pantry.items.iter().find(|item| item.ingredient == ingredient.name) {
-                            let stock_label = gtk::Label::new(None);
-                            stock_label.set_margin_top(10);
+                    if let Some(pantry) = dm.get_pantry() {     // Get the pantry data
+                        if let Some(pantry_item) = pantry.items.iter().find(|item| item.ingredient == ingredient.name) { // Find the pantry item
+                            let stock_label = gtk::Label::new(None);    // Create a label for stock information
+                            stock_label.set_margin_top(10);                 // Set margin for the label
                             
-                            if let (Some(quantity), Some(quantity_type)) = (pantry_item.quantity, &pantry_item.quantity_type) {
-                                stock_label.set_markup(&format!("<b>In stock:</b> {} {}", quantity, quantity_type));
-                            } else if let (Some(quantity), None) = (pantry_item.quantity, &pantry_item.quantity_type) {
-                                stock_label.set_markup(&format!("<b>In stock:</b> {}", quantity));
+                            // Check if the item is in stock
+                            // Now quantity_type is a String, not Option<String>
+                            if let Some(quantity) = pantry_item.quantity {
+                                if pantry_item.quantity_type.is_empty() {
+                                    stock_label.set_markup(&format!("<b>In stock:</b> {}", quantity));
+                                } else {
+                                    stock_label.set_markup(&format!("<b>In stock:</b> {} {}", quantity, pantry_item.quantity_type));
+                                }
                             } else {
                                 stock_label.set_markup("<b>In stock:</b> Yes (quantity unknown)");
                             }
                             
-                            stock_label.set_halign(gtk::Align::Start);
-                            details_container.append(&stock_label);
+                            stock_label.set_halign(gtk::Align::Start);      // Align the label to the start
+                            details_container.append(&stock_label);     // Add the label to the details container
                             
                             // Last updated date
                             let updated_label = gtk::Label::new(None);
@@ -1205,8 +1235,6 @@ impl SimpleComponent for AppModel {
                     }
                     
                     // Recipes with this ingredient
-                    // We can use either get_recipes_with_ingredient or ingredient_usage for this
-                    // Let's use get_ingredient_usage to demonstrate its use
                     let ingredient_usage = dm.get_ingredient_usage();
                     let recipes_with_ingredient = ingredient_usage.get(&ingredient.name).cloned().unwrap_or_else(Vec::new);
                     
@@ -1222,22 +1250,22 @@ impl SimpleComponent for AppModel {
                         recipes_box.set_margin_start(10);
                         
                         for recipe in recipes_with_ingredient {
-                            let recipe_button = gtk::Button::new();
-                            recipe_button.set_label(&recipe.title);
-                            recipe_button.set_halign(gtk::Align::Start);
-                            recipe_button.add_css_class("link-button");
+                            let recipe_button = gtk::Button::new(); // Create a new button for each recipe
+                            recipe_button.set_label(&recipe.title);         // Set the button label to the recipe title
+                            recipe_button.set_halign(gtk::Align::Start);    // Align the button to the start
+                            recipe_button.add_css_class("link-button");     // Add a CSS class for styling
                             
-                            let sender_clone = sender.clone();
-                            let recipe_title = recipe.title.clone();
-                            recipe_button.connect_clicked(move |_| {
-                                sender_clone.input(AppMsg::SwitchTab(Tab::Recipes));
-                                sender_clone.input(AppMsg::SelectRecipe(recipe_title.clone()));
+                            let sender_clone = sender.clone();  // Clone the sender for the button callback
+                            let recipe_title = recipe.title.clone();               // Clone the recipe title for the callback
+                            recipe_button.connect_clicked(move |_| {                       // This block executes when the recipe button is clicked
+                                sender_clone.input(AppMsg::SwitchTab(Tab::Recipes));            // Switch to the Recipes tab
+                                sender_clone.input(AppMsg::SelectRecipe(recipe_title.clone())); // Select the recipe
                             });
                             
-                            recipes_box.append(&recipe_button);
+                            recipes_box.append(&recipe_button); // Add the recipe button to the box
                         }
                         
-                        details_container.append(&recipes_box);
+                        details_container.append(&recipes_box); // Add the recipes box to the details container
                     }
                     
                     widgets.pantry_details.append(&details_container);
@@ -1590,9 +1618,9 @@ impl SimpleComponent for AppModel {
                     
                     // Get quantity information if in pantry
                     let (quantity, quantity_type) = if let Some(pantry_item) = dm.get_pantry_item(&ingredient.name) {
-                        (pantry_item.quantity.map(|q| q.to_string()), pantry_item.quantity_type.clone())
+                        (pantry_item.quantity.map(|q| q.to_string()), Some(pantry_item.quantity_type.clone()))
                     } else {
-                        (None, None)
+                        (None, Some(String::new()))
                     };
                     
                     pantry_items_by_category
@@ -1626,14 +1654,19 @@ impl SimpleComponent for AppModel {
                             for (name, quantity, quantity_type, is_in_stock) in items.iter() {
                                 let item_row = gtk::Box::new(gtk::Orientation::Horizontal, 5);
                                 item_row.set_margin_all(5);
-                                
-                                // Create the item label with quantity if available
-                                let mut label_text = name.clone();
-                                if let (Some(q), Some(t)) = (quantity, quantity_type) {
-                                    label_text = format!("{} ({} {})", name, q, t);
-                                } else if let (Some(q), None) = (quantity, quantity_type) {
+                                         // Create the item label with quantity if available
+                        let mut label_text = name.clone();
+                        if let Some(q) = quantity {
+                            if let Some(t) = quantity_type.as_ref() {
+                                if t.is_empty() {
                                     label_text = format!("{} ({})", name, q);
+                                } else {
+                                    label_text = format!("{} ({} {})", name, q, t);
                                 }
+                            } else {
+                                label_text = format!("{} ({})", name, q);
+                            }
+                        }
                                 
                                 // Add checkmark for in-stock items
                                 if *is_in_stock {
@@ -1726,8 +1759,9 @@ impl SimpleComponent for AppModel {
                 widgets.recipes_list_box.append(&no_data_row);
             }
         }
-    }
-}
+    } // == UPDATE_VIEW ENDS HERE ==
+} 
+//
 // The main function initializes the GTK application and runs the app
 fn main() {
     let app = RelmApp::new("org.cookbook.CookbookGtk");

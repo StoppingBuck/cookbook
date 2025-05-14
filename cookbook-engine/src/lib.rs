@@ -1,15 +1,24 @@
-use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::{Path, PathBuf};
-use thiserror::Error;
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};            // For serialization and deserialization
+use std::fs;                                    // For file operations
+use std::path::{Path, PathBuf};                 // For handling file paths
+use thiserror::Error;                           // For error handling
+use std::collections::HashMap;                  // For storing ingredients and recipes
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+/*
+The #[derive(...)] attribute in Rust allows you to automatically implement certain traits for your custom data types without having to write the implementation code manually. In this specific case, four important traits are being derived:
+
+Debug enables the type to be printed with the {:?} format specifier during debugging, allowing you to see the internal state of instances during development or when troubleshooting.
+
+Clone provides a .clone() method that creates a deep copy of the value, allowing you to duplicate instances when needed. This is useful when you need to create independent copies of your data structures.
+
+Serialize and Deserialize are traits from the Serde library (serialization/deserialization framework) that allow the type to be converted to and from various data formats like JSON, YAML, or TOML. This is particularly important for the cookbook project since it stores data in YAML files and needs to read/write these formats.
+*/
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ingredient {
     pub name: String,
     pub category: String,
     pub kb: Option<String>,
-    pub tags: Vec<String>,
+    pub tags: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,7 +56,8 @@ pub struct Recipe {
 pub struct PantryItem {
     pub ingredient: String,
     pub quantity: Option<f64>,
-    pub quantity_type: Option<String>,
+    #[serde(default)]
+    pub quantity_type: String,
     pub last_updated: String,
 }
 
@@ -508,14 +518,14 @@ impl DataManager {
         if let Some(index) = pantry_item_index {
             // Update the existing pantry item
             pantry.items[index].quantity = quantity;
-            pantry.items[index].quantity_type = quantity_type;
+            pantry.items[index].quantity_type = quantity_type.unwrap_or_default();
             pantry.items[index].last_updated = today;
         } else {
             // Create a new pantry item
             let new_item = PantryItem {
                 ingredient: ingredient_name.to_string(),
                 quantity,
-                quantity_type,
+                quantity_type: quantity_type.unwrap_or_default(),
                 last_updated: today,
             };
             
@@ -595,6 +605,7 @@ impl DataManager {
         self.update_ingredient(original_name, new_ingredient.clone())?;
         
         // Then update the pantry if necessary
+        // We'll always pass the quantity_type (empty string if None)
         if quantity.is_some() || quantity_type.is_some() {
             self.update_pantry_item(&new_ingredient.name, quantity, quantity_type)?;
         }
