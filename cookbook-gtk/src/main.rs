@@ -996,27 +996,19 @@ impl SimpleComponent for AppModel {
             }
             // Message: User updates an ingredient with pantry data
             AppMsg::UpdateIngredientWithPantry(original_name, new_ingredient, quantity, quantity_type) => {
-                // We need to create a new DataManager to apply our changes #TODO: This is a bit inefficient, we should be able to update in place
+                // Use the engine's utility method for handling updates
                 if let Some(old_data_manager) = &self.data_manager {
-                    // Create a new DataManager instance with the same path
-                    if let Ok(mut new_manager) = DataManager::new(old_data_manager.get_data_dir()) {
-                        // Load ingredients and pantry data first (but not recipes yet)
-                        if let Err(err) = new_manager.load_data() {
-                            eprintln!("Error loading data: {:?}", err);
-                            return;
-                        }
-                        
-                        // Perform our update on the new instance
-                        if let Err(err) = new_manager.update_ingredient_with_pantry(
-                            &original_name,
-                            new_ingredient.clone(),
-                            quantity,
-                            quantity_type,
-                        ) {
-                            eprintln!("Error updating ingredient: {:?}", err);
-                        } else {
+                    // Use the new DataManager method that handles the update process
+                    match DataManager::create_with_updated_ingredient(
+                        old_data_manager.get_data_dir(),
+                        &original_name,
+                        new_ingredient.clone(),
+                        quantity,
+                        quantity_type
+                    ) {
+                        Ok(updated_manager) => {
                             // Replace the old manager with our updated one
-                            self.data_manager = Some(Rc::new(new_manager));
+                            self.data_manager = Some(Rc::new(updated_manager));
                             
                             // Update the selected ingredient to the new name
                             let new_selected_name = new_ingredient.name.clone();
@@ -1032,6 +1024,24 @@ impl SimpleComponent for AppModel {
                                     sender_clone.input(AppMsg::SwitchTab(Tab::Recipes));
                                 });
                             }
+                        },
+                        Err(err) => {
+                            eprintln!("Error updating ingredient: {:?}", err);
+                            
+                            // Show error dialog to the user in a safe way
+                            let error_message = format!("Failed to update ingredient: {}", err);
+                            
+                            glib::spawn_future_local(async move {
+                                let dialog = gtk::MessageDialog::builder()
+                                    .modal(true)
+                                    .buttons(gtk::ButtonsType::Ok)
+                                    .message_type(gtk::MessageType::Error)
+                                    .text(&error_message)
+                                    .build();
+                                    
+                                dialog.connect_response(|dialog, _| dialog.destroy());
+                                dialog.show();
+                            });
                         }
                     }
                 }

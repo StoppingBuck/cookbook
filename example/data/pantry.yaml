@@ -8,10 +8,10 @@ items:
   quantity: null
   quantity_type: ''
   last_updated: 2025-05-10
-- ingredient: chicken beast
+- ingredient: chicken breast
   quantity: 1.0
   quantity_type: ton
-  last_updated: 2025-05-14
+  last_updated: 2025-05-15
 - ingredient: milk
   quantity: 1.0
   quantity_type: ''

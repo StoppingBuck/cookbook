@@ -54,7 +54,7 @@ pub struct Recipe {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PantryItem {
-    pub ingredient: String,
+    pub ingredient: String,     //#TODO Should it perhaps be an Ingredient?
     pub quantity: Option<f64>,
     #[serde(default)]
     pub quantity_type: String,
@@ -100,47 +100,57 @@ pub enum CookbookError {
     UpdateError(String),
 }
 
+// Implementing method for Ingredient
 impl Ingredient {
+    
+    // Reads an ingredient from a YAML file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, CookbookError> {
-        let content = fs::read_to_string(&path).map_err(|e| CookbookError::ReadError(e.to_string()))?;
-        serde_yaml::from_str(&content).map_err(|e| CookbookError::ParseError(e.to_string()))
+        let content = fs::read_to_string(&path).map_err(|e| CookbookError::ReadError(e.to_string()))?; // Read the file content
+        serde_yaml::from_str(&content).map_err(|e| CookbookError::ParseError(e.to_string()))                   // Parse the YAML content
     }
     
+    // Writes an ingredient to a YAML file
     pub fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), CookbookError> {
         let yaml = serde_yaml::to_string(self)
-            .map_err(|e| CookbookError::ParseError(format!("Failed to serialize ingredient: {}", e)))?;
+            .map_err(|e| CookbookError::ParseError(format!("Failed to serialize ingredient: {}", e)))?;    // Serialize the ingredient to YAML
         
         fs::write(&path, yaml)
-            .map_err(|e| CookbookError::WriteError(format!("Failed to write ingredient file: {}", e)))?;
+            .map_err(|e| CookbookError::WriteError(format!("Failed to write ingredient file: {}", e)))?;   // Write the YAML content to the file
             
-        Ok(())
+        Ok(()) // Return Ok if successful
     }
 }
 
+// Implementing method for Pantry
 impl Pantry {
+    // Reads a pantry from a YAML file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, CookbookError> {
-        let content = fs::read_to_string(&path).map_err(|e| CookbookError::ReadError(e.to_string()))?;
-        serde_yaml::from_str(&content).map_err(|e| CookbookError::ParseError(e.to_string()))
+        let content = fs::read_to_string(&path).map_err(|e| CookbookError::ReadError(e.to_string()))?; // Read the file content
+        serde_yaml::from_str(&content).map_err(|e| CookbookError::ParseError(e.to_string()))                   // Parse the YAML content
     }
     
+    // Writes a pantry to a YAML file
     pub fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), CookbookError> {
         let yaml = serde_yaml::to_string(self)
-            .map_err(|e| CookbookError::ParseError(format!("Failed to serialize pantry: {}", e)))?;
+            .map_err(|e| CookbookError::ParseError(format!("Failed to serialize pantry: {}", e)))?; // Serialize the pantry to YAML
         
         fs::write(&path, yaml)
-            .map_err(|e| CookbookError::WriteError(format!("Failed to write pantry file: {}", e)))?;
+            .map_err(|e| CookbookError::WriteError(format!("Failed to write pantry file: {}", e)))?; // Write the YAML content to the file
             
-        Ok(())
+        Ok(()) // Return Ok if successful
     }
 }
 
+// Implementing method for Recipe
 impl Recipe {
+    /// Reads a recipe from a Markdown file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, CookbookError> {
-        let content = fs::read_to_string(&path).map_err(|e| CookbookError::ReadError(e.to_string()))?;
+        let content = fs::read_to_string(&path).map_err(|e| CookbookError::ReadError(e.to_string()))?; // Read the file content
         
         // Split frontmatter from content by finding the two "---" delimiters
         let parts: Vec<&str> = content.splitn(3, "---").collect();
         
+        // Check if we have at least three parts: before, frontmatter, and after
         if parts.len() < 3 {
             return Err(CookbookError::MarkdownError("Invalid markdown format: missing frontmatter delimiters".to_string()));
         }
@@ -152,21 +162,25 @@ impl Recipe {
         // Store the instructions (parts[2] is after the second ---)
         recipe.instructions = parts[2].trim().to_string();
         
-        Ok(recipe)
+        Ok(recipe)  // Return the parsed recipe
     }
     
+    /// Returns the total time required for the recipe (prep time + downtime)
     pub fn total_time(&self) -> u32 {
         self.prep_time.unwrap_or(0) + self.downtime.unwrap_or(0)
     }
 }
 
+// Implementing method for KnowledgeBaseEntry
 impl KnowledgeBaseEntry {
+    /// Reads a knowledge base entry from a Markdown file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, CookbookError> {
-        let content = fs::read_to_string(&path).map_err(|e| CookbookError::ReadError(e.to_string()))?;
+        let content = fs::read_to_string(&path).map_err(|e| CookbookError::ReadError(e.to_string()))?; // Read the file content
         
         // Split frontmatter from content by finding the two "---" delimiters
         let parts: Vec<&str> = content.splitn(3, "---").collect();
         
+        // Check if we have at least three parts: before, frontmatter, and after
         if parts.len() < 3 {
             return Err(CookbookError::MarkdownError("Invalid markdown format: missing frontmatter delimiters".to_string()));
         }
@@ -178,10 +192,13 @@ impl KnowledgeBaseEntry {
         // Store the content (parts[2] is after the second ---)
         kb_entry.content = parts[2].trim().to_string();
         
-        Ok(kb_entry)
+        Ok(kb_entry) // Return the parsed knowledge base entry
     }
 }
 
+// Main struct for managing the cookbook data
+// It contains methods for loading, updating, and retrieving ingredients, recipes, and pantry items
+// It also provides methods for filtering and searching through the data
 #[derive(Debug)]
 pub struct DataManager {
     data_dir: PathBuf,
@@ -191,13 +208,52 @@ pub struct DataManager {
     kb_entries: HashMap<String, KnowledgeBaseEntry>,
 }
 
+// Implementing methods for DataManager
+/// The DataManager is responsible for loading, storing, retrieving, and updating cookbook data.
+///
+/// # Data Components
+///
+/// This manager handles several types of cookbook data:
+/// - Ingredients: Basic food components with properties like name, category, etc.
+/// - Recipes: Instructions for preparing dishes using combinations of ingredients
+/// - Pantry: User's inventory of available ingredients
+/// - Knowledge Base: Educational entries related to cooking techniques and ingredients
+///
+/// # File Structure
+///
+/// The DataManager expects a specific directory structure:
+/// - `{data_dir}/ingredients/*.yaml` - YAML files for each ingredient
+/// - `{data_dir}/recipes/*.md` - Markdown files for each recipe
+/// - `{data_dir}/pantry.yaml` - YAML file containing pantry inventory
+/// - `{data_dir}/kb/*.md` - Markdown files for knowledge base entries
+///
+/// # Main Functionality
+///
+/// The DataManager provides methods for:
+/// - Loading data from files
+/// - Retrieving specific items or collections
+/// - Filtering and searching data
+/// - Updating ingredients and pantry items
+/// - Cross-referencing between different data types (e.g., finding recipes that use specific ingredients)
+///
+/// # Error Handling
+///
+/// Most methods return Result types that can contain CookbookError variants for handling
+/// issues such as missing directories, parsing failures, or update errors.
 impl DataManager {
+    /// Creates a new DataManager instance, loading data from the specified directory
+    /// Returns an error if the directory does not exist or if any data loading fails
+    /// The data_dir parameter is the path to the directory containing the cookbook data files
     pub fn new<P: AsRef<Path>>(data_dir: P) -> Result<Self, CookbookError> {
-        let data_dir = data_dir.as_ref().to_path_buf();
+        let data_dir = data_dir.as_ref().to_path_buf(); // Convert data_dir to PathBuf
+        // Check if the directory exists
+        // If it doesn't exist, return an error
         if !data_dir.exists() {
             return Err(CookbookError::DataDirError(format!("Directory not found: {:?}", data_dir)));
         }
         
+        // Create a new DataManager instance
+        // Initialize the ingredients HashMap, recipes Vec, pantry Option, and kb_entries HashMap
         let mut manager = DataManager {
             data_dir,
             ingredients: HashMap::new(),
@@ -209,90 +265,136 @@ impl DataManager {
         // Load all data
         manager.load_data()?;
         
-        Ok(manager)
+        Ok(manager) // Return the DataManager instance
     }
     
+    /// Returns the data directory path
     pub fn get_data_dir(&self) -> &Path {
         &self.data_dir
     }
     
+    /// Loads all data from the specified directory
     pub fn load_data(&mut self) -> Result<(), CookbookError> {
         self.load_ingredients()?;
         self.load_recipes()?;
         self.load_pantry()?;
         self.load_kb_entries()?;
         
-        Ok(())
+        Ok(())  // Return Ok if all data loading is successful
     }
     
+    /// Loads ingredients from the ingredients directory
+    /// Returns an error if the directory does not exist or if any ingredient file fails to load
+    /// The ingredients directory should contain YAML files for each ingredient
+    /// The ingredient files should be named with the format "ingredient_name.yaml"
+    /// The ingredient_name should be the same as the name field in the Ingredient struct
     fn load_ingredients(&mut self) -> Result<(), CookbookError> {
-        let ingredients_dir = self.data_dir.join("ingredients");
+        let ingredients_dir = self.data_dir.join("ingredients");    // Path to the ingredients directory
+        // Check if the ingredients directory exists
         if !ingredients_dir.exists() {
-            return Err(CookbookError::DataDirError(format!("Ingredients directory not found: {:?}", ingredients_dir)));
+            return Err(CookbookError::DataDirError(format!("Ingredients directory not found: {:?}", ingredients_dir))); 
         }
         
+        // Read the contents of the ingredients directory
         let entries = fs::read_dir(&ingredients_dir)
             .map_err(|e| CookbookError::ListDirError(e.to_string()))?;
         
+        // Iterate through each entry in the directory
         for entry in entries {
+            // Get the path of the entry
             let entry = entry.map_err(|e| CookbookError::ListDirError(e.to_string()))?;
             let path = entry.path();
             
+            // Check if the entry is a file and has a .yaml extension
+            // If it is, load the ingredient from the file
             if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("yaml") {
                 let ingredient = Ingredient::from_file(&path)?;
                 self.ingredients.insert(ingredient.name.clone(), ingredient);
             }
         }
         
-        Ok(())
+        Ok(())  // Return Ok if all ingredients are loaded successfully
     }
     
+    /// Loads recipes from the recipes directory
+    /// Returns an error if the directory does not exist or if any recipe file fails to load
+    /// The recipes directory should contain Markdown files for each recipe
     fn load_recipes(&mut self) -> Result<(), CookbookError> {
-        let recipes_dir = self.data_dir.join("recipes");
+        let recipes_dir = self.data_dir.join("recipes"); // Path to the recipes directory
+        // Check if the recipes directory exists
+        // If it doesn't exist, return an error
         if !recipes_dir.exists() {
             return Err(CookbookError::DataDirError(format!("Recipes directory not found: {:?}", recipes_dir)));
         }
         
+        // Read the contents of the recipes directory
         let entries = fs::read_dir(&recipes_dir)
             .map_err(|e| CookbookError::ListDirError(e.to_string()))?;
         
+        // Iterate through each entry in the directory
         for entry in entries {
+            // Get the path of the entry
             let entry = entry.map_err(|e| CookbookError::ListDirError(e.to_string()))?;
             let path = entry.path();
             
-            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("md") {
-                match Recipe::from_file(&path) {
-                    Ok(recipe) => self.recipes.push(recipe),
-                    Err(e) => eprintln!("Failed to load recipe {:?}: {}", path, e),
+            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("md") { // Check if the entry is a file and has a .md extension
+                match Recipe::from_file(&path) {                                                    // Load the recipe from the file
+                    Ok(recipe) => self.recipes.push(recipe),                                // If successful, add it to the recipes vector
+                    Err(e) => eprintln!("Failed to load recipe {:?}: {}", path, e), // If failed, print an error message
                 }
             }
         }
-        
-        Ok(())
+
+        Ok(()) // Return Ok if all recipes are loaded successfully
     }
     
+    /// Loads the pantry from the pantry.yaml file
+    /// Returns an error if the file does not exist or if it fails to load
+    /// The pantry.yaml file should contain the pantry data in YAML format
+    /// The pantry data should include the version and a list of pantry items
+    /// Each pantry item should include the ingredient name, quantity, quantity type, and last updated date
+    /// The pantry items should be stored in the items field of the Pantry struct
     fn load_pantry(&mut self) -> Result<(), CookbookError> {
-        let pantry_path = self.data_dir.join("pantry.yaml");
+        let pantry_path = self.data_dir.join("pantry.yaml");    // Path to the pantry.yaml file
+        // Check if the pantry.yaml file exists
         if pantry_path.exists() {
             self.pantry = Some(Pantry::from_file(&pantry_path)?);
         }
         
-        Ok(())
+        Ok(())  // Return Ok if the pantry is loaded successfully
     }
     
+    /// Loads knowledge base entries from the kb directory
+    /// Returns an error if the directory does not exist or if any entry file fails to load
+    /// The kb directory should contain Markdown files for each knowledge base entry
+    /// Each entry file should include the frontmatter with the slug, title, image, and content
+    /// The slug should be a unique identifier for the entry
+    /// The title should be the title of the entry
+    /// The image should be the path to the image file (if any)
+    /// The content should be the main content of the entry
+    /// The knowledge base entries should be stored in the kb_entries HashMap
+    /// The keys of the HashMap should be the slugs of the entries
+    /// The values of the HashMap should be the KnowledgeBaseEntry struct
+    /// The KnowledgeBaseEntry struct should include the slug, title, image, and content fields
     fn load_kb_entries(&mut self) -> Result<(), CookbookError> {
+        // Path to the kb directory
         let kb_dir = self.data_dir.join("kb");
         if !kb_dir.exists() {
             return Err(CookbookError::DataDirError(format!("Knowledge Base directory not found: {:?}", kb_dir)));
         }
         
+        // Read the contents of the kb directory
         let entries = fs::read_dir(&kb_dir)
             .map_err(|e| CookbookError::ListDirError(e.to_string()))?;
         
+        // Iterate through each entry in the directory
         for entry in entries {
+            // Get the path of the entry
             let entry = entry.map_err(|e| CookbookError::ListDirError(e.to_string()))?;
             let path = entry.path();
             
+            // Check if the entry is a file and has a .md extension
+            // If it is, load the knowledge base entry from the file
             if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("md") {
                 match KnowledgeBaseEntry::from_file(&path) {
                     Ok(kb_entry) => {
@@ -303,17 +405,23 @@ impl DataManager {
             }
         }
         
-        Ok(())
+        Ok(()) // Return Ok if all knowledge base entries are loaded successfully
     }
     
+    /// Returns all ingredients as a vector of references
     pub fn get_all_ingredients(&self) -> Vec<&Ingredient> {
         self.ingredients.values().collect()
     }
     
+    /// Returns a specific ingredient from the DataManager's collection of ingredients. 
     pub fn get_ingredient(&self, name: &str) -> Option<&Ingredient> {
         self.ingredients.get(name)
     }
     
+    /// Checks whether a specific ingredient exists in the user's pantry
+    /// Returns true if the ingredient is found in the pantry, false otherwise
+    /// The ingredient_name parameter is the name of the ingredient to check
+    /// The ingredient_name should match the name field in the Ingredient struct
     pub fn is_in_pantry(&self, ingredient_name: &str) -> bool {
         if let Some(pantry) = &self.pantry {
             pantry.items.iter().any(|item| item.ingredient == ingredient_name)
@@ -322,6 +430,9 @@ impl DataManager {
         }
     }
     
+    /// Returns a specific pantry item from the user's pantry
+    /// Returns an Option containing a reference to the PantryItem if found, or None if not found
+    /// The ingredient_name parameter is the name of the ingredient to check
     pub fn get_pantry_item(&self, ingredient_name: &str) -> Option<&PantryItem> {
         if let Some(pantry) = &self.pantry {
             pantry.items.iter().find(|item| item.ingredient == ingredient_name)
@@ -330,14 +441,24 @@ impl DataManager {
         }
     }
     
+    /// Returns all recipes as a slice of references
+    /// The recipes are stored in the recipes field of the DataManager struct
+    /// The recipes field is a vector of Recipe structs
     pub fn get_all_recipes(&self) -> &[Recipe] {
         &self.recipes
     }
 
+    /// Returns a specific recipe from the DataManager's collection of recipes
+    /// Returns an Option containing a reference to the Recipe if found, or None if not found
+    /// The title parameter is the title of the recipe to retrieve
+    /// The title should match the Title field in the Recipe struct
     pub fn get_recipe(&self, title: &str) -> Option<&Recipe> {
         self.recipes.iter().find(|recipe| recipe.title == title)
     }
     
+    /// Returns the pantry as an Option containing a reference to the Pantry struct
+    /// The pantry field is an Option that contains the user's pantry data
+    /// The pantry data is loaded from the pantry.yaml file
     pub fn get_pantry(&self) -> Option<&Pantry> {
         self.pantry.as_ref()
     }
@@ -611,5 +732,25 @@ impl DataManager {
         }
         
         Ok(true)
+    }
+    
+    /// Creates a new DataManager instance with updated ingredient and pantry values
+    /// This is a utility method for UIs that need to update ingredients while maintaining immutability
+    /// Returns a new DataManager instance with the updated values
+    pub fn create_with_updated_ingredient(
+        data_dir: &Path,
+        original_name: &str,
+        new_ingredient: Ingredient,
+        quantity: Option<f64>,
+        quantity_type: Option<String>,
+    ) -> Result<Self, CookbookError> {
+        // Create a new DataManager instance
+        let mut manager = DataManager::new(data_dir)?;
+        
+        // Perform the update
+        manager.update_ingredient_with_pantry(original_name, new_ingredient, quantity, quantity_type)?;
+        
+        // Return the updated manager
+        Ok(manager)
     }
 }
