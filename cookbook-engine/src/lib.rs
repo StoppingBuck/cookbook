@@ -361,6 +361,11 @@ impl DataManager {
             return Err(CookbookError::DataDirError(format!("Recipes directory not found: {:?}", recipes_dir)));
         }
         
+        // Use a HashMap to track recipes by title (case-insensitive)
+        // This helps us avoid duplicate recipes with different capitalizations
+        use std::collections::HashMap;
+        let mut recipes_map: HashMap<String, Recipe> = HashMap::new();
+        
         // Read the contents of the recipes directory
         let entries = fs::read_dir(&recipes_dir)
             .map_err(|e| CookbookError::ListDirError(e.to_string()))?;
@@ -373,11 +378,18 @@ impl DataManager {
             
             if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("md") { // Check if the entry is a file and has a .md extension
                 match Recipe::from_file(&path) {                                                    // Load the recipe from the file
-                    Ok(recipe) => self.recipes.push(recipe),                                // If successful, add it to the recipes vector
+                    Ok(recipe) => {
+                        // Use lowercase title as key to avoid case-sensitive duplicates
+                        let title_key = recipe.title.to_lowercase();
+                        recipes_map.insert(title_key, recipe);
+                    },
                     Err(e) => eprintln!("Failed to load recipe {:?}: {}", path, e), // If failed, print an error message
                 }
             }
         }
+        
+        // Convert the HashMap values into our recipes vector
+        self.recipes = recipes_map.into_values().collect();
 
         Ok(()) // Return Ok if all recipes are loaded successfully
     }
@@ -507,11 +519,16 @@ impl DataManager {
     
     /// Returns all recipes that use the specified ingredient
     pub fn get_recipes_with_ingredient(&self, ingredient_name: &str) -> Vec<&Recipe> {
-        self.recipes.iter()
+        let mut results: Vec<&Recipe> = self.recipes.iter()
             .filter(|recipe| {
                 recipe.ingredients.iter().any(|ing| ing.ingredient == ingredient_name)
             })
-            .collect()
+            .collect();
+            
+        // Sort recipes alphabetically by title
+        results.sort_by(|a, b| a.title.cmp(&b.title));
+        
+        results
     }
 
     /// Filters ingredients based on search text, categories, and stock status
@@ -596,7 +613,7 @@ impl DataManager {
     pub fn search_recipes(&self, query: &str) -> Vec<&Recipe> {
         let query_lower = query.to_lowercase();
         
-        self.recipes.iter()
+        let mut results: Vec<&Recipe> = self.recipes.iter()
             .filter(|recipe| {
                 // Search in title
                 recipe.title.to_lowercase().contains(&query_lower) ||
@@ -611,7 +628,12 @@ impl DataManager {
                     tags.iter().any(|tag| tag.to_lowercase().contains(&query_lower))
                 )
             })
-            .collect()
+            .collect();
+            
+        // Sort recipes alphabetically by title
+        results.sort_by(|a, b| a.title.cmp(&b.title));
+        
+        results
     }
     
     /// Returns a map of ingredient names and the recipes that use them
@@ -630,6 +652,11 @@ impl DataManager {
                     recipes.push(recipe);
                 }
             }
+        }
+        
+        // Sort recipes alphabetically for each ingredient
+        for recipes in result.values_mut() {
+            recipes.sort_by(|a, b| a.title.cmp(&b.title));
         }
         
         result
