@@ -832,6 +832,17 @@ impl SimpleComponent for AppModel {
                         dialog.set_modal(true);
                         dialog.set_default_width(400);
                         
+                        // Set transient parent to an appropriate application window
+                        for window in gtk::Window::list_toplevels() {
+                            if let Some(win) = window.downcast_ref::<gtk::Window>() {
+                                // Make sure we don't set the dialog as its own parent
+                                if win != dialog.upcast_ref::<gtk::Window>() {
+                                    dialog.set_transient_for(Some(win));
+                                    break;
+                                }
+                            }
+                        }
+                        
                         // Get the content area of the dialog
                         let content_area = dialog.content_area();
                         content_area.set_margin_all(10);
@@ -1029,18 +1040,28 @@ impl SimpleComponent for AppModel {
                         dialog.set_default_width(500);
                         dialog.set_default_height(600);
                         
+                        // Set transient parent to an appropriate application window
+                        for window in gtk::Window::list_toplevels() {
+                            if let Some(win) = window.downcast_ref::<gtk::Window>() {
+                                // Make sure we don't set the dialog as its own parent
+                                if win != dialog.upcast_ref::<gtk::Window>() {
+                                    dialog.set_transient_for(Some(win));
+                                    break;
+                                }
+                            }
+                        }
+                        
                         // Get the content area of the dialog
                         let content_area = dialog.content_area();
                         content_area.set_margin_all(10);
                         content_area.set_spacing(10);
                         
-                        // Create a scrolled window to contain all the fields (recipes can be long)
+                        // Create a scrolled window for the form
                         let scrolled_window = gtk::ScrolledWindow::new();
-                        scrolled_window.set_hexpand(true);
-                        scrolled_window.set_vexpand(true);
                         scrolled_window.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+                        scrolled_window.set_vexpand(true);
                         
-                        // Create a container for the form fields
+                        // Create a container for all form fields
                         let form_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
                         form_container.set_margin_all(10);
                         
@@ -1054,7 +1075,7 @@ impl SimpleComponent for AppModel {
                         title_entry.set_hexpand(true);
                         title_box.append(&title_label);
                         title_box.append(&title_entry);
-                        form_container.append(&title_box);
+                        content_area.append(&title_box);
                         
                         // Prep time field
                         let prep_time_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
@@ -1068,7 +1089,7 @@ impl SimpleComponent for AppModel {
                         prep_time_entry.set_hexpand(true);
                         prep_time_box.append(&prep_time_label);
                         prep_time_box.append(&prep_time_entry);
-                        form_container.append(&prep_time_box);
+                        content_area.append(&prep_time_box);
                         
                         // Downtime field
                         let downtime_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
@@ -1082,7 +1103,7 @@ impl SimpleComponent for AppModel {
                         downtime_entry.set_hexpand(true);
                         downtime_box.append(&downtime_label);
                         downtime_box.append(&downtime_entry);
-                        form_container.append(&downtime_box);
+                        content_area.append(&downtime_box);
                         
                         // Servings field
                         let servings_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
@@ -1096,7 +1117,7 @@ impl SimpleComponent for AppModel {
                         servings_entry.set_hexpand(true);
                         servings_box.append(&servings_label);
                         servings_box.append(&servings_entry);
-                        form_container.append(&servings_box);
+                        content_area.append(&servings_box);
                         
                         // Tags field (comma-separated)
                         let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
@@ -1108,16 +1129,16 @@ impl SimpleComponent for AppModel {
                         tags_entry.set_hexpand(true);
                         tags_box.append(&tags_label);
                         tags_box.append(&tags_entry);
-                        form_container.append(&tags_box);
+                        content_area.append(&tags_box);
                         
-                        // Separator before ingredients
-                        form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+                        // Separator
+                        content_area.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
                         
                         // Ingredients section heading
                         let ingredients_label = gtk::Label::new(Some("Ingredients"));
                         ingredients_label.set_markup("<span weight='bold'>Ingredients</span>");
                         ingredients_label.set_halign(gtk::Align::Start);
-                        form_container.append(&ingredients_label);
+                        content_area.append(&ingredients_label);
                         
                         // Ingredients container (will hold ingredient rows)
                         let ingredients_container = gtk::Box::new(gtk::Orientation::Vertical, 5);
@@ -1766,6 +1787,7 @@ impl SimpleComponent for AppModel {
         }
 
         // Update recipe details if a recipe is selected
+
         if self.current_tab == Tab::Recipes {
             if let Some(recipe_name) = &self.selected_recipe {
                 // Clear previous content
@@ -1788,7 +1810,7 @@ impl SimpleComponent for AppModel {
                         let title_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
                         title_box.set_margin_bottom(10);
                         
-                        // Check if all ingredients are in stock and add a checkmark if they are
+                        // Check if all ingredients for this recipe are in the pantry
                         let all_ingredients_in_stock = dm.are_all_ingredients_in_pantry(&recipe.title);
                         let title_text = if all_ingredients_in_stock {
                             format!("<span size='x-large' weight='bold'>{} ✅</span>", recipe.title)
