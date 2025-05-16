@@ -4,9 +4,6 @@ Ingredients:
 - ingredient: potato
   quantity: 22.0
   quantity_type: kg
-- ingredient: liquid plutonium
-  quantity: 1.0
-  quantity_type: kg
 PrepTime: 30
 Downtime: 60
 Servings: 4

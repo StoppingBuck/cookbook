@@ -336,8 +336,20 @@ impl SimpleComponent for AppModel {
         recipes_list_box.connect_row_selected(move |_list, row_opt| {
             if let Some(row) = row_opt {
                 if let Some(child) = row.child() {
-                    // Extract the recipe title directly from the label
-                    if let Some(label) = child.downcast_ref::<gtk::Label>() {
+                    // With the checkmark addition, the child is now a Box, not directly a Label
+                    if let Some(box_container) = child.downcast_ref::<gtk::Box>() {
+                        // Find the Label within the Box (it should be the first child)
+                        if let Some(label_widget) = box_container.first_child() {
+                            if let Some(label) = label_widget.downcast_ref::<gtk::Label>() {
+                                // Extract recipe title, removing the checkmark if present
+                                let raw_text = label.text().to_string();
+                                // Remove checkmark if present
+                                let recipe_title = raw_text.trim_end_matches(" ✅").to_string();
+                                sender_clone.input(AppMsg::SelectRecipe(recipe_title));
+                            }
+                        }
+                    } else if let Some(label) = child.downcast_ref::<gtk::Label>() {
+                        // Fallback for old-style rows without Box
                         let recipe_title = label.text().to_string();
                         sender_clone.input(AppMsg::SelectRecipe(recipe_title));
                     }
@@ -1698,7 +1710,17 @@ impl SimpleComponent for AppModel {
                         
                         for recipe in recipes_with_ingredient {
                             let recipe_button = gtk::Button::new(); // Create a new button for each recipe
-                            recipe_button.set_label(&recipe.title);         // Set the button label to the recipe title
+                            
+                            // Check if all ingredients for this recipe are in the pantry
+                            let all_ingredients_in_stock = dm.are_all_ingredients_in_pantry(&recipe.title);
+                            
+                            // Set label with checkmark if all ingredients are in stock
+                            if all_ingredients_in_stock {
+                                recipe_button.set_label(&format!("{} ✅", recipe.title));
+                            } else {
+                                recipe_button.set_label(&recipe.title);
+                            }
+                            
                             recipe_button.set_halign(gtk::Align::Start);    // Align the button to the start
                             recipe_button.add_css_class("link-button");     // Add a CSS class for styling
                             
@@ -1766,8 +1788,16 @@ impl SimpleComponent for AppModel {
                         let title_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
                         title_box.set_margin_bottom(10);
                         
+                        // Check if all ingredients are in stock and add a checkmark if they are
+                        let all_ingredients_in_stock = dm.are_all_ingredients_in_pantry(&recipe.title);
+                        let title_text = if all_ingredients_in_stock {
+                            format!("<span size='x-large' weight='bold'>{} ✅</span>", recipe.title)
+                        } else {
+                            format!("<span size='x-large' weight='bold'>{}</span>", recipe.title)
+                        };
+                        
                         let title = gtk::Label::new(None);
-                        title.set_markup(&format!("<span size='x-large' weight='bold'>{}</span>", recipe.title));
+                        title.set_markup(&title_text);
                         title.set_halign(gtk::Align::Start);
                         title.set_hexpand(true);
                         title_box.append(&title);
@@ -2146,12 +2176,8 @@ impl SimpleComponent for AppModel {
                                 item_row.add_css_class("pantry-item");
                                 item_row.add_controller(click_gesture.clone());
                                 
-                                // Highlight if selected
-                                if let Some(selected) = &self.selected_ingredient {
-                                    if selected == name {
-                                        item_row.add_css_class("selected");
-                                    }
-                                }
+                                // Highlight will be added in update_view function
+                                // Can't access self.selected_ingredient here
                                 
                                 let sender_clone = sender.clone();
                                 let name_clone = name.clone();
@@ -2191,13 +2217,30 @@ impl SimpleComponent for AppModel {
                 if !filtered_recipes.is_empty() {
                     for recipe in filtered_recipes {
                         let row = gtk::ListBoxRow::new();
-                        let title_label = gtk::Label::new(Some(&recipe.title));
+                        
+                        // Create a container for the recipe entry to include both label and potentially a checkmark
+                        let item_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+                        
+                        // Check if all ingredients for this recipe are in the pantry
+                        let all_ingredients_in_stock = dm.are_all_ingredients_in_pantry(&recipe.title);
+                        
+                        // Create the title label, potentially with a checkmark
+                        let title_text = if all_ingredients_in_stock {
+                            format!("{} ✅", recipe.title)
+                        } else {
+                            recipe.title.clone()
+                        };
+                        
+                        let title_label = gtk::Label::new(Some(&title_text));
                         title_label.set_halign(gtk::Align::Start);
                         title_label.set_margin_start(5);
                         title_label.set_margin_end(5);
                         title_label.set_margin_top(5);
                         title_label.set_margin_bottom(5);
-                        row.set_child(Some(&title_label));
+                        title_label.set_hexpand(true);
+                        
+                        item_box.append(&title_label);
+                        row.set_child(Some(&item_box));
                         
                         widgets.recipes_list_box.append(&row);
                     }

@@ -197,6 +197,12 @@ impl Recipe {
     pub fn total_time(&self) -> u32 {
         self.prep_time.unwrap_or(0) + self.downtime.unwrap_or(0)
     }
+    
+    /// Checks if all ingredients for this recipe are in stock (in the pantry)
+    /// Returns true if all ingredients are available, false otherwise
+    pub fn all_ingredients_in_stock(&self, data_manager: &DataManager) -> bool {
+        self.ingredients.iter().all(|ingredient| data_manager.is_in_pantry(&ingredient.ingredient))
+    }
 }
 
 // Implementing method for KnowledgeBaseEntry
@@ -839,5 +845,18 @@ impl DataManager {
         
         // Return the updated manager
         Ok(manager)
+    }
+    
+    /// Checks if all ingredients for a specific recipe are in the pantry
+    /// Returns true if all ingredients are available, false otherwise
+    /// The recipe_title parameter is the title of the recipe to check
+    pub fn are_all_ingredients_in_pantry(&self, recipe_title: &str) -> bool {
+        // First, get the recipe
+        if let Some(recipe) = self.get_recipe(recipe_title) {
+            // Check if all ingredients are in pantry
+            recipe.ingredients.iter().all(|ingredient| self.is_in_pantry(&ingredient.ingredient))
+        } else {
+            false // Recipe not found
+        }
     }
 }

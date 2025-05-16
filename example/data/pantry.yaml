@@ -1,9 +1,9 @@
 version: 1
 items:
-- ingredient: potatoes
+- ingredient: potato
   quantity: 3.0
   quantity_type: kg
-  last_updated: 2025-05-14
+  last_updated: 2025-05-16
 - ingredient: tomato
   quantity: null
   quantity_type: ''
