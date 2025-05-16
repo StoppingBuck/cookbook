@@ -165,6 +165,34 @@ impl Recipe {
         Ok(recipe)  // Return the parsed recipe
     }
     
+    /// Writes a recipe to a Markdown file with YAML frontmatter
+    pub fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), CookbookError> {
+        // Create a copy of the recipe without instructions for YAML serialization
+        // This ensures we don't include the instructions in the YAML frontmatter
+        let recipe_for_yaml = Recipe {
+            title: self.title.clone(),
+            ingredients: self.ingredients.clone(),
+            prep_time: self.prep_time,
+            downtime: self.downtime,
+            servings: self.servings,
+            tags: self.tags.clone(),
+            instructions: String::new(), // Empty string since it's excluded via #[serde(skip)]
+        };
+        
+        // Serialize to YAML
+        let yaml = serde_yaml::to_string(&recipe_for_yaml)
+            .map_err(|e| CookbookError::ParseError(format!("Failed to serialize recipe: {}", e)))?;
+        
+        // Build the full content with frontmatter delimiters and instructions
+        let content = format!("---\n{}---\n{}", yaml, self.instructions);
+        
+        // Write to file
+        fs::write(&path, content)
+            .map_err(|e| CookbookError::WriteError(format!("Failed to write recipe file: {}", e)))?;
+        
+        Ok(())
+    }
+    
     /// Returns the total time required for the recipe (prep time + downtime)
     pub fn total_time(&self) -> u32 {
         self.prep_time.unwrap_or(0) + self.downtime.unwrap_or(0)
@@ -716,6 +744,47 @@ impl DataManager {
         Ok(true)
     }
     
+    /// Updates a recipe's properties including title, ingredients, prep time, downtime, servings, tags, and instructions
+    pub fn update_recipe(&mut self, 
+                       original_title: &str,
+                       new_recipe: Recipe) -> Result<bool, CookbookError> {
+        // Check if the original recipe exists
+        if !self.recipes.iter().any(|r| r.title == original_title) {
+            return Err(CookbookError::UpdateError(
+                format!("Recipe '{}' does not exist", original_title)
+            ));
+        }
+        
+        // Check if the new title conflicts with an existing recipe (if title is changing)
+        if original_title != new_recipe.title && self.recipes.iter().any(|r| r.title == new_recipe.title) {
+            return Err(CookbookError::UpdateError(
+                format!("Cannot rename: recipe '{}' already exists", new_recipe.title)
+            ));
+        }
+        
+        let recipes_dir = self.data_dir.join("recipes");
+        let old_path = recipes_dir.join(format!("{}.md", original_title.replace(" ", "_")));
+        let new_path = recipes_dir.join(format!("{}.md", new_recipe.title.replace(" ", "_")));
+        
+        // Update recipe in the recipes vector
+        // First remove the old recipe
+        self.recipes.retain(|r| r.title != original_title);
+        
+        // Add the new recipe
+        self.recipes.push(new_recipe.clone());
+        
+        // Write the recipe to file
+        new_recipe.to_file(&new_path)?;
+        
+        // If the title changed, remove the old file
+        if original_title != new_recipe.title && old_path.exists() {
+            fs::remove_file(old_path)
+                .map_err(|e| CookbookError::WriteError(format!("Failed to remove old recipe file: {}", e)))?;
+        }
+        
+        Ok(true)
+    }
+    
     /// Updates an ingredient with potential changes to both ingredient properties and pantry values
     pub fn update_ingredient_with_pantry(&mut self,
                                        original_name: &str,
@@ -749,6 +818,24 @@ impl DataManager {
         
         // Perform the update
         manager.update_ingredient_with_pantry(original_name, new_ingredient, quantity, quantity_type)?;
+        
+        // Return the updated manager
+        Ok(manager)
+    }
+    
+    /// Creates a new DataManager instance with an updated recipe
+    /// This is a utility method for UIs that need to update recipes while maintaining immutability
+    /// Returns a new DataManager instance with the updated recipe
+    pub fn create_with_updated_recipe(
+        data_dir: &Path,
+        original_title: &str,
+        new_recipe: Recipe,
+    ) -> Result<Self, CookbookError> {
+        // Create a new DataManager instance
+        let mut manager = DataManager::new(data_dir)?;
+        
+        // Perform the update
+        manager.update_recipe(original_title, new_recipe)?;
         
         // Return the updated manager
         Ok(manager)
