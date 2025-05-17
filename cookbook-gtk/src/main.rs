@@ -32,7 +32,6 @@ use relm4::gtk::glib; // Import glib for async operations
 use relm4::ComponentParts; // Import to create component parts with model and widgets
 use relm4::ComponentSender; // Import to send messages between components
 use relm4::RelmApp; // Import application runner for relm4
-use relm4::RelmWidgetExt;
 use relm4::SimpleComponent;
 use ui_constants::*; // Import trait for implementing UI components
 use std::env; // Import env for accessing environment variables
@@ -250,15 +249,6 @@ impl SimpleComponent for AppModel {
             }
             // Message: User toggles a pantry category filter
             AppMsg::TogglePantryCategory(category, is_selected) => {
-                if is_selected && !self.selected_pantry_categories.contains(&category) {
-                    self.selected_pantry_categories.push(category);
-                } else if !is_selected {
-                    self.selected_pantry_categories.retain(|c| c != &category);
-                }
-            }
-            // Message: User toggles a category filter
-            // - If the category is selected, add it to the selected categories
-            AppMsg::ToggleCategoryFilter(category, is_selected) => {
                 if is_selected && !self.selected_pantry_categories.contains(&category) {
                     self.selected_pantry_categories.push(category);
                 } else if !is_selected {

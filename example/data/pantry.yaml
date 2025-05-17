@@ -26,7 +26,7 @@ items:
   last_updated: 2025-05-17
 - ingredient: pasta
   quantity: null
-  quantity_type: ''
+  quantity_type: t
   last_updated: 2025-05-17
 - ingredient: pastas
   quantity: null

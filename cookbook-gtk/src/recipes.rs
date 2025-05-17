@@ -475,14 +475,45 @@ pub fn show_edit_recipe_dialog(
     // Ingredients container (will hold ingredient rows)
     let ingredients_container = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
 
+    // Collect all ingredient names for completion (if data_manager is available)
+    let ingredient_names: Vec<String> = data_manager
+        .as_ref()
+        .map(|dm| dm.get_all_ingredients().into_iter().map(|i| i.name.clone()).collect())
+        .unwrap_or_default();
+
+    // Helper to create a ListStore for completion
+    fn create_ingredient_list_store(names: &[String]) -> gtk::ListStore {
+        let store = gtk::ListStore::new(&[String::static_type()]);
+        for name in names {
+            let iter = store.append();
+            store.set(&iter, &[(0, &name)]);
+        }
+        store
+    }
+
+    // Helper to create a name_entry with completion
+    let create_name_entry_with_completion = |default_text: Option<&str>| {
+        let entry = gtk::Entry::new();
+        if let Some(text) = default_text {
+            entry.set_text(text);
+        }
+        entry.set_placeholder_text(Some("Ingredient name"));
+        entry.set_hexpand(true);
+        if !ingredient_names.is_empty() {
+            let completion = gtk::EntryCompletion::new();
+            let store = create_ingredient_list_store(&ingredient_names);
+            completion.set_model(Some(&store));
+            completion.set_text_column(0);
+            entry.set_completion(Some(&completion));
+        }
+        entry
+    };
+
     // Add existing ingredients
     for ingredient in &recipe.ingredients {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
 
-        let name_entry = gtk::Entry::new();
-        name_entry.set_text(&ingredient.ingredient);
-        name_entry.set_placeholder_text(Some("Ingredient name"));
-        name_entry.set_hexpand(true);
+        let name_entry = create_name_entry_with_completion(Some(&ingredient.ingredient));
         row.append(&name_entry);
 
         let qty_entry = gtk::Entry::new();
@@ -522,13 +553,29 @@ pub fn show_edit_recipe_dialog(
     add_ingredient_button.set_halign(gtk::Align::Start);
 
     let ingredients_container_ref = ingredients_container.clone();
+    let ingredient_names_clone = ingredient_names.clone();
     add_ingredient_button.connect_clicked(move |_| {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
 
-        let name_entry = gtk::Entry::new();
-        name_entry.set_placeholder_text(Some("Ingredient name"));
-        name_entry.set_hexpand(true);
-        row.append(&name_entry);
+        // Use the same helper for new ingredient rows
+        let entry = gtk::Entry::new();
+        entry.set_placeholder_text(Some("Ingredient name"));
+        entry.set_hexpand(true);
+        if !ingredient_names_clone.is_empty() {
+            let completion = gtk::EntryCompletion::new();
+            let store = {
+                let store = gtk::ListStore::new(&[String::static_type()]);
+                for name in &ingredient_names_clone {
+                    let iter = store.append();
+                    store.set(&iter, &[(0, &name)]);
+                }
+                store
+            };
+            completion.set_model(Some(&store));
+            completion.set_text_column(0);
+            entry.set_completion(Some(&completion));
+        }
+        row.append(&entry);
 
         let qty_entry = gtk::Entry::new();
         qty_entry.set_placeholder_text(Some("Quantity"));

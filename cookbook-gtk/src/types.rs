@@ -22,7 +22,6 @@ pub enum AppMsg {
     SelectRecipe(String),
     SelectIngredient(String),
     SelectKnowledgeBaseEntry(String),
-    ToggleCategoryFilter(String, bool),
     ToggleInStockFilter(bool),
     SearchTextChanged(String),
     EditIngredient(String),
