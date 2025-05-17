@@ -27,6 +27,7 @@ pub enum AppMsg {
     SearchTextChanged(String),
     EditIngredient(String),
     EditRecipe(String),
+    TogglePantryCategory(String, bool),
     UpdateIngredientWithPantry(
         String,
         cookbook_engine::Ingredient,
@@ -57,7 +58,7 @@ pub struct AppModel {
 pub struct AppWidgets {
     pub window: gtk::ApplicationWindow,
     pub main_stack: gtk::Stack,
-    pub recipes_label: gtk::Label,
+    //pub recipes_label: gtk::Label,
     pub recipes_details: gtk::Box,
     pub recipes_list_box: gtk::ListBox,
     pub pantry_label: gtk::Label,

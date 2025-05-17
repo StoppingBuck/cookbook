@@ -1,5 +1,5 @@
 ---
-Title: Chicken Pan
+Title: 'I hope nobody ever checks the commit history, ; . - '
 Ingredients:
 - ingredient: chicken breast
   quantity: 2.0

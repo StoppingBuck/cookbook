@@ -1,3 +1,4 @@
+use crate::types::AppModel;
 use crate::types::{AppMsg, Tab};
 use cookbook_engine::DataManager;
 use gtk::glib;
@@ -662,4 +663,131 @@ pub fn handle_update_ingredient_with_pantry(
     } else {
         None
     }
+}
+
+/// Builds the Pantry tab UI and returns the main container, list container, details box, category filters, in-stock switch, and title label.
+pub fn build_pantry_tab(
+    model: &AppModel,
+    sender: &ComponentSender<AppModel>,
+) -> (
+    gtk::Box,    // pantry_container
+    gtk::Box,    // pantry_list_container
+    gtk::Box,    // pantry_details_box
+    gtk::Box,    // category_filters_box
+    gtk::Switch, // stock_filter_switch
+    gtk::Label,  // pantry_title
+) {
+    // Main container for the Pantry tab
+    let pantry_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
+
+    // Title
+    let pantry_title = gtk::Label::new(Some("Pantry"));
+    pantry_title.set_markup("<span size='x-large' weight='bold'>Pantry</span>");
+    pantry_title.set_halign(gtk::Align::Start);
+    pantry_title.set_margin_all(10);
+
+    // Filters frame
+    let filters_frame = gtk::Frame::new(None);
+    filters_frame.set_margin_bottom(10);
+
+    let filters_container = gtk::Box::new(gtk::Orientation::Vertical, 5);
+    filters_container.set_margin_all(10);
+
+    // Category filters
+    let category_filters_label = gtk::Label::new(Some("Categories:"));
+    category_filters_label.set_halign(gtk::Align::Start);
+    category_filters_label.set_margin_bottom(5);
+
+    let category_filters_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    category_filters_box.set_margin_bottom(10);
+
+    // Get unique categories from ingredients using the engine's method
+    let mut categories: Vec<String> = Vec::new();
+    if let Some(ref dm) = model.data_manager {
+        categories = dm.as_ref().get_unique_categories();
+    }
+
+    // Create filter checkboxes
+    for category in &categories {
+        let check = gtk::CheckButton::with_label(category);
+        check.set_active(model.selected_pantry_categories.contains(category));
+        let sender_clone = sender.clone();
+        let category_clone = category.clone();
+        check.connect_toggled(move |btn| {
+            sender_clone.input(AppMsg::TogglePantryCategory(
+                category_clone.clone(),
+                btn.is_active(),
+            ));
+        });
+        category_filters_box.append(&check);
+    }
+
+    // In-stock only filter
+    let stock_filter_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let stock_filter_label = gtk::Label::new(Some("Show in-stock items only:"));
+    stock_filter_label.set_halign(gtk::Align::Start);
+
+    let stock_filter_switch = gtk::Switch::new();
+    stock_filter_switch.set_state(model.show_in_stock_only);
+    let sender_clone = sender.clone();
+    stock_filter_switch.connect_state_notify(move |switch| {
+        sender_clone.input(AppMsg::ToggleInStockFilter(switch.state()));
+    });
+
+    stock_filter_box.append(&stock_filter_label);
+    stock_filter_box.append(&stock_filter_switch);
+
+    filters_container.append(&category_filters_label);
+    filters_container.append(&category_filters_box);
+    filters_container.append(&stock_filter_box);
+
+    filters_frame.set_child(Some(&filters_container));
+    pantry_container.append(&pantry_title);
+    pantry_container.append(&filters_frame);
+
+    // Split view for pantry (list on left, details on right)
+    let pantry_content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    pantry_content.set_hexpand(true);
+    pantry_content.set_vexpand(true);
+    pantry_content.set_margin_top(10);
+    pantry_content.set_margin_start(10);
+    pantry_content.set_margin_end(10);
+    pantry_content.set_margin_bottom(10);
+
+    // Pantry list
+    let pantry_list_scroll = gtk::ScrolledWindow::new();
+    pantry_list_scroll.set_hexpand(false);
+    pantry_list_scroll.set_vexpand(true);
+    pantry_list_scroll.set_min_content_width(300);
+
+    let pantry_list_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
+
+    pantry_list_scroll.set_child(Some(&pantry_list_container));
+
+    // Pantry details (right side)
+    let pantry_details_box = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    pantry_details_box.set_hexpand(true);
+    pantry_details_box.set_vexpand(true);
+
+    // Initial content for the details
+    let select_label = gtk::Label::new(Some("Select an ingredient to view details"));
+    select_label.set_halign(gtk::Align::Center);
+    select_label.set_valign(gtk::Align::Center);
+    select_label.set_hexpand(true);
+    select_label.set_vexpand(true);
+    pantry_details_box.append(&select_label);
+
+    pantry_content.append(&pantry_list_scroll);
+    pantry_content.append(&pantry_details_box);
+
+    pantry_container.append(&pantry_content);
+
+    (
+        pantry_container,
+        pantry_list_container,
+        pantry_details_box,
+        category_filters_box,
+        stock_filter_switch,
+        pantry_title,
+    )
 }

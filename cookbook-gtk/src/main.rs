@@ -129,360 +129,18 @@ impl SimpleComponent for AppModel {
         // Create tab content containers
 
         // Recipes tab content
-        let recipes_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
-
-        let recipes_header = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        recipes_header.set_margin_top(10);
-        recipes_header.set_margin_bottom(10);
-        recipes_header.set_margin_start(10);
-        recipes_header.set_margin_end(10);
-
-        let recipes_title = gtk::Label::new(Some("Recipes"));
-        recipes_title.set_markup("<span size='x-large' weight='bold'>Recipes</span>");
-        recipes_title.set_halign(gtk::Align::Start);
-        recipes_title.set_hexpand(true);
-
-        let search_entry = gtk::SearchEntry::new();
-        search_entry.set_placeholder_text(Some("Search recipes..."));
-
-        let sender_clone = sender.clone();
-        search_entry.connect_search_changed(move |entry| {
-            sender_clone.input(AppMsg::SearchTextChanged(entry.text().to_string()));
-        });
-
-        recipes_header.append(&recipes_title);
-        recipes_header.append(&search_entry);
-
-        recipes_container.append(&recipes_header);
-
-        // Split view for recipes (list on left, details on right)
-        let recipes_content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        recipes_content.set_hexpand(true);
-        recipes_content.set_vexpand(true);
-
-        // Recipe list
-        let recipes_list_scroll = gtk::ScrolledWindow::new();
-        recipes_list_scroll.set_hexpand(false);
-        recipes_list_scroll.set_vexpand(true);
-        recipes_list_scroll.set_min_content_width(250);
-
-        let recipes_list_box = gtk::ListBox::new();
-        recipes_list_box.set_selection_mode(gtk::SelectionMode::Single);
-
-        // Add recipes to list if available
-        if let Some(ref dm) = model.data_manager {
-            // Use empty search text initially to get all recipes
-            let recipes = dm.search_recipes("");
-            if !recipes.is_empty() {
-                for recipe in recipes {
-                    let row = gtk::ListBoxRow::new();
-                    let title_label = gtk::Label::new(Some(&recipe.title));
-                    title_label.set_halign(gtk::Align::Start);
-                    title_label.set_margin_start(5);
-                    title_label.set_margin_end(5);
-                    title_label.set_margin_top(5);
-                    title_label.set_margin_bottom(5);
-                    row.set_child(Some(&title_label));
-
-                    recipes_list_box.append(&row);
-                }
-            } else {
-                let no_recipes_row = gtk::ListBoxRow::new();
-                let no_recipes_label = gtk::Label::new(Some("No recipes available"));
-                no_recipes_label.set_margin_all(10);
-                no_recipes_row.set_child(Some(&no_recipes_label));
-                recipes_list_box.append(&no_recipes_row);
-            }
-        } else {
-            let no_data_row = gtk::ListBoxRow::new();
-            let no_data_label = gtk::Label::new(Some("Failed to load recipe data"));
-            no_data_label.set_margin_all(10);
-            no_data_row.set_child(Some(&no_data_label));
-            recipes_list_box.append(&no_data_row);
-        }
-
-        // Recipe selection handler - callback for recipes_list_box.connect_row_selected
-        // - Triggered whenever a row in the recipe list is selected
-        // - Gets the recipe title from the row label directly
-        // - Sends an AppMsg::SelectRecipe message with the recipe title
-        let sender_clone = sender.clone();
-        recipes_list_box.connect_row_selected(move |_list, row_opt| {
-            if let Some(row) = row_opt {
-                if let Some(child) = row.child() {
-                    // With the checkmark addition, the child is now a Box, not directly a Label
-                    if let Some(box_container) = child.downcast_ref::<gtk::Box>() {
-                        // Find the Label within the Box (it should be the first child)
-                        if let Some(label_widget) = box_container.first_child() {
-                            if let Some(label) = label_widget.downcast_ref::<gtk::Label>() {
-                                // Extract recipe title, removing the checkmark if present
-                                let raw_text = label.text().to_string();
-                                // Remove checkmark if present
-                                let recipe_title = raw_text.trim_end_matches(" ✅").to_string();
-                                sender_clone.input(AppMsg::SelectRecipe(recipe_title));
-                            }
-                        }
-                    } else if let Some(label) = child.downcast_ref::<gtk::Label>() {
-                        // Fallback for old-style rows without Box
-                        let recipe_title = label.text().to_string();
-                        sender_clone.input(AppMsg::SelectRecipe(recipe_title));
-                    }
-                }
-            }
-        });
-
-        recipes_list_scroll.set_child(Some(&recipes_list_box));
-
-        // Recipe details view
-        let recipes_details = gtk::Box::new(gtk::Orientation::Vertical, 10);
-        recipes_details.set_hexpand(true);
-        recipes_details.set_vexpand(true);
-
-        let recipes_label = gtk::Label::new(Some("Select a recipe to view details"));
-        recipes_label.set_halign(gtk::Align::Center);
-        recipes_label.set_valign(gtk::Align::Center);
-        recipes_label.set_hexpand(true);
-        recipes_label.set_vexpand(true);
-
-        recipes_details.append(&recipes_label);
-
-        recipes_content.append(&recipes_list_scroll);
-        recipes_content.append(&recipes_details);
-
-        recipes_container.append(&recipes_content);
+        let (recipes_container, recipes_list_box, recipes_details) =
+            recipes::build_recipes_tab(&model, &sender);
 
         // Pantry tab content
-        let pantry_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
-
-        // Pantry header with title and search
-        let pantry_header = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        pantry_header.set_margin_top(10);
-        pantry_header.set_margin_bottom(10);
-        pantry_header.set_margin_start(10);
-        pantry_header.set_margin_end(10);
-
-        let pantry_title = gtk::Label::new(Some("Pantry"));
-        pantry_title.set_markup("<span size='x-large' weight='bold'>Pantry</span>");
-        pantry_title.set_halign(gtk::Align::Start);
-        pantry_title.set_hexpand(true);
-
-        let pantry_search_entry = gtk::SearchEntry::new();
-        pantry_search_entry.set_placeholder_text(Some("Search ingredients..."));
-
-        let sender_clone = sender.clone();
-        pantry_search_entry.connect_search_changed(move |entry| {
-            sender_clone.input(AppMsg::SearchTextChanged(entry.text().to_string()));
-        });
-
-        pantry_header.append(&pantry_title);
-        pantry_header.append(&pantry_search_entry);
-
-        pantry_container.append(&pantry_header);
-
-        // Filters section
-        let filters_frame = gtk::Frame::new(Some("Filters"));
-        filters_frame.set_margin_start(10);
-        filters_frame.set_margin_end(10);
-
-        let filters_container = gtk::Box::new(gtk::Orientation::Vertical, 5);
-        filters_container.set_margin_all(10);
-
-        // Category filters
-        let category_filters_label = gtk::Label::new(Some("Categories:"));
-        category_filters_label.set_halign(gtk::Align::Start);
-        category_filters_label.set_margin_bottom(5);
-
-        let category_filters_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        category_filters_box.set_margin_bottom(10);
-
-        // Get unique categories from ingredients using the engine's method
-        let mut categories = Vec::new();
-        if let Some(ref dm) = model.data_manager {
-            categories = dm.get_all_ingredient_categories();
-        }
-
-        // Create filter checkboxes
-        for category in &categories {
-            let check_button = gtk::CheckButton::with_label(category);
-            let sender_clone = sender.clone();
-            let category_clone = category.clone();
-
-            check_button.connect_toggled(move |check| {
-                sender_clone.input(AppMsg::ToggleCategoryFilter(
-                    category_clone.clone(),
-                    check.is_active(),
-                ));
-            });
-
-            category_filters_box.append(&check_button);
-        }
-
-        // In-stock only filter
-        let stock_filter_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        let stock_filter_label = gtk::Label::new(Some("Show in-stock items only:"));
-        stock_filter_label.set_halign(gtk::Align::Start);
-
-        let stock_filter_switch = gtk::Switch::new();
-        let sender_clone = sender.clone();
-        stock_filter_switch.connect_state_notify(move |switch| {
-            sender_clone.input(AppMsg::ToggleInStockFilter(switch.state()));
-        });
-
-        stock_filter_box.append(&stock_filter_label);
-        stock_filter_box.append(&stock_filter_switch);
-
-        filters_container.append(&category_filters_label);
-        filters_container.append(&category_filters_box);
-        filters_container.append(&stock_filter_box);
-
-        filters_frame.set_child(Some(&filters_container));
-        pantry_container.append(&filters_frame);
-
-        // Split view for pantry (list on left, details on right)
-        let pantry_content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        pantry_content.set_hexpand(true);
-        pantry_content.set_vexpand(true);
-        pantry_content.set_margin_top(10);
-        pantry_content.set_margin_start(10);
-        pantry_content.set_margin_end(10);
-        pantry_content.set_margin_bottom(10);
-
-        // Pantry list
-        let pantry_list_scroll = gtk::ScrolledWindow::new();
-        pantry_list_scroll.set_hexpand(false);
-        pantry_list_scroll.set_vexpand(true);
-        pantry_list_scroll.set_min_content_width(300);
-
-        let pantry_list_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
-
-        // Pantry details (right side)
-        let pantry_details_box = gtk::Box::new(gtk::Orientation::Vertical, 10);
-        pantry_details_box.set_hexpand(true);
-        pantry_details_box.set_vexpand(true);
-
-        // Initial content for the details
-        let select_label = gtk::Label::new(Some("Select an ingredient to view details"));
-        select_label.set_halign(gtk::Align::Center);
-        select_label.set_valign(gtk::Align::Center);
-        select_label.set_hexpand(true);
-        select_label.set_vexpand(true);
-        pantry_details_box.append(&select_label);
-
-        // Group by categories using the engine method
-        let mut pantry_items_by_category: std::collections::HashMap<
-            String,
-            Vec<(String, Option<String>, Option<String>, bool)>,
-        > = std::collections::HashMap::new();
-
-        if let Some(ref dm) = model.data_manager {
-            // Use the engine's method to get pantry items grouped by category
-            let items_by_category = dm.get_pantry_items_by_category();
-
-            // Convert to the format expected by the UI
-            for (category, items) in items_by_category {
-                let mut category_items = Vec::new();
-
-                for (ingredient, pantry_item) in items {
-                    let is_in_stock = pantry_item.is_some();
-                    let (quantity, quantity_type) = if let Some(item) = pantry_item {
-                        (
-                            item.quantity.map(|q| q.to_string()),
-                            Some(item.quantity_type.clone()),
-                        )
-                    } else {
-                        (None, Some(String::new()))
-                    };
-
-                    category_items.push((
-                        ingredient.name.clone(),
-                        quantity,
-                        quantity_type,
-                        is_in_stock,
-                    ));
-                }
-
-                pantry_items_by_category.insert(category, category_items);
-            }
-
-            // Sort categories and ingredients
-            let mut sorted_categories: Vec<String> =
-                pantry_items_by_category.keys().cloned().collect();
-            sorted_categories.sort();
-
-            for category in sorted_categories {
-                // Create category header
-                let category_frame = gtk::Frame::new(Some(&category));
-                category_frame.set_margin_bottom(10);
-
-                let category_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
-                category_frame.set_child(Some(&category_box));
-
-                if let Some(items) = pantry_items_by_category.get_mut(&category) {
-                    // Sort ingredients alphabetically within category
-                    items.sort_by(|a, b| a.0.cmp(&b.0));
-
-                    for (name, quantity, quantity_type, is_in_stock) in items.iter() {
-                        let item_row = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-                        item_row.set_margin_all(5);
-
-                        // Create the item label with quantity if available
-                        let mut label_text = name.clone();
-                        if let Some(q) = quantity {
-                            if let Some(t) = quantity_type.as_ref() {
-                                if t.is_empty() {
-                                    label_text = format!("{} ({})", name, q);
-                                } else {
-                                    label_text = format!("{} ({} {})", name, q, t);
-                                }
-                            } else {
-                                label_text = format!("{} ({})", name, q);
-                            }
-                        }
-
-                        // Add checkmark for in-stock items
-                        if *is_in_stock {
-                            label_text = format!("{} ✅", label_text);
-                        }
-
-                        let item_label = gtk::Label::new(Some(&label_text));
-                        item_label.set_halign(gtk::Align::Start);
-                        item_label.set_hexpand(true);
-                        item_row.append(&item_label);
-
-                        // Make the row selectable
-                        let click_gesture = gtk::GestureClick::new();
-                        item_row.add_css_class("pantry-item");
-                        item_row.add_controller(click_gesture.clone());
-
-                        // Highlight will be added in update_view function
-                        // Can't access self.selected_ingredient here
-
-                        let sender_clone = sender.clone();
-                        let name_clone = name.clone();
-                        click_gesture.connect_pressed(move |_, _, _, _| {
-                            sender_clone.input(AppMsg::SelectIngredient(name_clone.clone()));
-                        });
-
-                        category_box.append(&item_row);
-                    }
-                }
-
-                pantry_list_container.append(&category_frame);
-            }
-        } else {
-            // No data available
-            let no_data_label = gtk::Label::new(Some("No ingredient data available"));
-            no_data_label.set_margin_all(10);
-            pantry_list_container.append(&no_data_label);
-        }
-
-        pantry_list_scroll.set_child(Some(&pantry_list_container));
-
-        // Add both parts to the pantry content
-        pantry_content.append(&pantry_list_scroll);
-        pantry_content.append(&pantry_details_box);
-
-        // Add pantry content to container
-        pantry_container.append(&pantry_content);
+        let (
+            pantry_container,
+            pantry_list_container,
+            pantry_details_box,
+            category_filters_box,
+            stock_filter_switch,
+            pantry_title,
+        ) = pantry::build_pantry_tab(&model, &sender);
 
         // Knowledge base tab content
         let kb_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
@@ -619,7 +277,7 @@ impl SimpleComponent for AppModel {
         let mut widgets = AppWidgets {
             window: root,
             main_stack,
-            recipes_label: recipes_label.clone(),
+            //recipes_label: recipes_label.clone(),
             recipes_details: recipes_details, // Store the recipes_details container
             recipes_list_box: recipes_list_box, // Store the recipes list box
             pantry_label: pantry_title.clone(), // Use pantry_title instead of pantry_label
@@ -687,6 +345,14 @@ impl SimpleComponent for AppModel {
             // Message: User selects a Knowledge Base entry
             AppMsg::SelectKnowledgeBaseEntry(slug) => {
                 self.selected_kb_entry = Some(slug);
+            }
+            // Message: User toggles a pantry category filter
+            AppMsg::TogglePantryCategory(category, is_selected) => {
+                if is_selected && !self.selected_pantry_categories.contains(&category) {
+                    self.selected_pantry_categories.push(category);
+                } else if !is_selected {
+                    self.selected_pantry_categories.retain(|c| c != &category);
+                }
             }
             // Message: User toggles a category filter
             // - If the category is selected, add it to the selected categories

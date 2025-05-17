@@ -911,4 +911,17 @@ impl DataManager {
             false // Recipe not found
         }
     }
+    
+    /// Returns a sorted Vec of all unique ingredient categories.
+    pub fn get_unique_categories(&self) -> Vec<String> {
+        let mut categories = self
+            .ingredients
+            .values()
+            .map(|ingredient| ingredient.category.clone())
+            .collect::<std::collections::HashSet<String>>()
+            .into_iter()
+            .collect::<Vec<String>>();
+        categories.sort();
+        categories
+    }
 }

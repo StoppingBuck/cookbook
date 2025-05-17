@@ -6,6 +6,7 @@ use relm4::ComponentSender;
 use relm4::RelmWidgetExt;
 use std::rc::Rc;
 
+use crate::types::AppModel;
 use crate::types::AppMsg;
 
 /// Updates the recipes list based on search text and other filters
@@ -703,4 +704,95 @@ pub fn show_edit_recipe_dialog(
     });
 
     dialog.show();
+}
+
+/// Builds the Recipes tab UI and returns the main container, list box, and details box.
+pub fn build_recipes_tab(
+    model: &AppModel,
+    sender: &ComponentSender<AppModel>,
+) -> (gtk::Box, gtk::ListBox, gtk::Box) {
+    // Main vertical container for the Recipes tab
+    let recipes_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
+
+    // Header: title + search
+    let recipes_header = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    recipes_header.set_margin_top(10);
+    recipes_header.set_margin_bottom(10);
+    recipes_header.set_margin_start(10);
+    recipes_header.set_margin_end(10);
+
+    let recipes_title = gtk::Label::new(Some("Recipes"));
+    recipes_title.set_markup("<span size='x-large' weight='bold'>Recipes</span>");
+    recipes_title.set_halign(gtk::Align::Start);
+    recipes_title.set_hexpand(true);
+
+    let search_entry = gtk::SearchEntry::new();
+    search_entry.set_placeholder_text(Some("Search recipes..."));
+
+    let sender_clone = sender.clone();
+    search_entry.connect_search_changed(move |entry| {
+        sender_clone.input(AppMsg::SearchTextChanged(entry.text().to_string()));
+    });
+
+    recipes_header.append(&recipes_title);
+    recipes_header.append(&search_entry);
+    recipes_container.append(&recipes_header);
+
+    // Split view: list (left), details (right)
+    let recipes_content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    recipes_content.set_hexpand(true);
+    recipes_content.set_vexpand(true);
+
+    // Recipe list
+    let recipes_list_scroll = gtk::ScrolledWindow::new();
+    recipes_list_scroll.set_hexpand(false);
+    recipes_list_scroll.set_vexpand(true);
+    recipes_list_scroll.set_min_content_width(250);
+
+    let recipes_list_box = gtk::ListBox::new();
+    recipes_list_box.set_selection_mode(gtk::SelectionMode::Single);
+
+    // Populate the list
+    crate::recipes::update_recipes_list(
+        &recipes_list_box,
+        &model.data_manager,
+        &model.search_text,
+        sender,
+        |title| AppMsg::SelectRecipe(title),
+    );
+
+    // Recipe selection handler
+    let sender_clone = sender.clone();
+    recipes_list_box.connect_row_selected(move |_list, row_opt| {
+        if let Some(row) = row_opt {
+            if let Some(box_layout) = row.child().and_then(|w| w.downcast::<gtk::Box>().ok()) {
+                if let Some(label) = box_layout.first_child().and_then(|w| w.downcast::<gtk::Label>().ok()) {
+                    let recipe_title = label.text().to_string();
+                    sender_clone.input(AppMsg::SelectRecipe(recipe_title));
+                }
+            }
+        }
+    });
+
+    recipes_list_scroll.set_child(Some(&recipes_list_box));
+
+    // Recipe details view (right side)
+    let recipes_details = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    recipes_details.set_hexpand(true);
+    recipes_details.set_vexpand(true);
+
+    let recipes_label = gtk::Label::new(Some("Select a recipe to view details"));
+    recipes_label.set_halign(gtk::Align::Center);
+    recipes_label.set_valign(gtk::Align::Center);
+    recipes_label.set_hexpand(true);
+    recipes_label.set_vexpand(true);
+
+    recipes_details.append(&recipes_label);
+
+    recipes_content.append(&recipes_list_scroll);
+    recipes_content.append(&recipes_details);
+
+    recipes_container.append(&recipes_content);
+
+    (recipes_container, recipes_list_box, recipes_details)
 }
