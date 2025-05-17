@@ -7,6 +7,7 @@ mod dialogs;
 mod kb;
 mod pantry;
 mod recipes;
+mod sidebar;
 mod types;
 
 // First, we import the necessary libraries and modules
@@ -113,80 +114,8 @@ impl SimpleComponent for AppModel {
         // Create the main layout (sidebar + main content area)
         let main_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
 
-        // Create the sidebar (navigation buttons)
-        let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        sidebar.set_margin_top(10);
-        sidebar.set_margin_bottom(10);
-        sidebar.set_margin_start(10);
-        sidebar.set_margin_end(10);
-        sidebar.set_width_request(200);
-
-        // Sidebar heading
-        let sidebar_heading = gtk::Label::new(Some("Navigation"));
-        sidebar_heading.set_halign(gtk::Align::Start);
-        sidebar_heading.set_margin_bottom(10);
-        sidebar.append(&sidebar_heading);
-
-        // Create sidebar buttons for navigation
-        let mut sidebar_buttons = vec![];
-
-        let recipes_button = gtk::Button::with_label("Recipes");
-        let pantry_button = gtk::Button::with_label("Pantry");
-        let kb_button = gtk::Button::with_label("Knowledge Base");
-        let settings_button = gtk::Button::with_label("Settings");
-        let about_button = gtk::Button::with_label("About");
-        let help_button = gtk::Button::with_label("Help");
-
-        // Connect sidebar button signals to handle tab switching
-        let sender_clone = sender.clone();
-        recipes_button.connect_clicked(move |_| {
-            sender_clone.input(AppMsg::SwitchTab(Tab::Recipes));
-        });
-
-        let sender_clone = sender.clone();
-        pantry_button.connect_clicked(move |_| {
-            sender_clone.input(AppMsg::SwitchTab(Tab::Pantry));
-        });
-
-        let sender_clone = sender.clone();
-        kb_button.connect_clicked(move |_| {
-            sender_clone.input(AppMsg::SwitchTab(Tab::KnowledgeBase));
-        });
-
-        let sender_clone = sender.clone();
-        settings_button.connect_clicked(move |_| {
-            sender_clone.input(AppMsg::SwitchTab(Tab::Settings));
-        });
-
-        let sender_clone = sender.clone();
-        about_button.connect_clicked(move |_| {
-            sender_clone.input(AppMsg::ShowAbout);
-        });
-
-        let sender_clone = sender.clone();
-        help_button.connect_clicked(move |_| {
-            sender_clone.input(AppMsg::ShowHelp);
-        });
-
-        // Add buttons to the sidebar
-        sidebar.append(&recipes_button);
-        sidebar.append(&pantry_button);
-        sidebar.append(&kb_button);
-
-        // Add a separator between main tabs and settings/help
-        let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
-        separator.set_margin_top(10);
-        separator.set_margin_bottom(10);
-        sidebar.append(&separator);
-
-        sidebar.append(&settings_button);
-        sidebar.append(&about_button);
-        sidebar.append(&help_button);
-
-        sidebar_buttons.push(recipes_button);
-        sidebar_buttons.push(pantry_button);
-        sidebar_buttons.push(kb_button);
-        sidebar_buttons.push(settings_button);
+        // Create sidebar
+        let (sidebar, sidebar_buttons) = sidebar::build_sidebar(&sender);
 
         // Create the main stack for switching between tab content
         let main_stack = gtk::Stack::new();
@@ -1625,43 +1554,15 @@ impl SimpleComponent for AppModel {
 
         // Update recipe details if a recipe is selected
 
+        // Update recipe details if a recipe is selected
         if self.current_tab == Tab::Recipes {
-            if let Some(recipe_name) = &self.selected_recipe {
-                // Clear previous content
-                while let Some(child) = widgets.recipes_details.first_child() {
-                    widgets.recipes_details.remove(&child);
-                }
-            
-                // Find the selected recipe in the data manager
-                if let Some(ref dm) = self.data_manager {
-                    let recipe_details_scroll = recipes::build_recipe_detail_view(
-                        dm,
-                        recipe_name,
-                        &sender,
-                        AppMsg::EditRecipe,
-                    );
-                    widgets.recipes_details.append(&recipe_details_scroll);
-                } else {
-                    // Data manager not available
-                    let error_label =
-                        gtk::Label::new(Some("Unable to load recipe: data manager not available"));
-                    error_label.set_halign(gtk::Align::Center);
-                    error_label.set_valign(gtk::Align::Center);
-                    widgets.recipes_details.append(&error_label);
-                }
-            } else {
-                // No recipe selected
-                let select_label = gtk::Label::new(Some("Select a recipe to view details"));
-                select_label.set_halign(gtk::Align::Center);
-                select_label.set_valign(gtk::Align::Center);
-            
-                // Clear previous content
-                while let Some(child) = widgets.recipes_details.first_child() {
-                    widgets.recipes_details.remove(&child);
-                }
-            
-                widgets.recipes_details.append(&select_label);
-            }
+            recipes::update_recipe_details(
+                self.selected_recipe.as_deref(), 
+                &widgets.recipes_details, 
+                &self.data_manager,
+                &sender,
+                AppMsg::EditRecipe
+            );
         }
 
         // Update KB entry details if a KB entry is selected

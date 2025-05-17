@@ -285,3 +285,45 @@ where
     
     recipe_details_scroll
 }
+
+/// Updates the recipe details view based on the selected recipe
+pub fn update_recipe_details<C>(
+    selected_recipe: Option<&str>,
+    recipes_details: &gtk::Box,
+    data_manager: &Option<std::rc::Rc<cookbook_engine::DataManager>>,
+    sender: &ComponentSender<C>,
+    edit_recipe_msg: impl Fn(String) -> C::Input + Clone + 'static,
+) where
+    C: relm4::Component,
+{
+    // Clear previous content
+    while let Some(child) = recipes_details.first_child() {
+        recipes_details.remove(&child);
+    }
+    
+    if let Some(recipe_name) = selected_recipe {
+        // Find the selected recipe in the data manager
+        if let Some(ref dm) = data_manager {
+            let recipe_details_scroll = build_recipe_detail_view(
+                dm,
+                recipe_name,
+                sender,
+                edit_recipe_msg,
+            );
+            recipes_details.append(&recipe_details_scroll);
+        } else {
+            // Data manager not available
+            let error_label =
+                gtk::Label::new(Some("Unable to load recipe: data manager not available"));
+            error_label.set_halign(gtk::Align::Center);
+            error_label.set_valign(gtk::Align::Center);
+            recipes_details.append(&error_label);
+        }
+    } else {
+        // No recipe selected
+        let select_label = gtk::Label::new(Some("Select a recipe to view details"));
+        select_label.set_halign(gtk::Align::Center);
+        select_label.set_valign(gtk::Align::Center);
+        recipes_details.append(&select_label);
+    }
+}
