@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use crate::types::AppModel;
 use crate::types::AppMsg;
+use crate::ui_constants::*;
 use crate::utils;
 
 /// Updates the recipes list based on search text and other filters
@@ -30,8 +31,8 @@ pub fn update_recipes_list<C>(
         if !filtered_recipes.is_empty() {
             for recipe in filtered_recipes {
                 let row = gtk::ListBoxRow::new();
-                let box_layout = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-                box_layout.set_margin_all(5);
+                let box_layout = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
+                box_layout.set_margin_all(LIST_ROW_MARGIN);
 
                 // Create recipe item with title and status icon
                 let title_label = gtk::Label::new(Some(&recipe.title));
@@ -101,7 +102,7 @@ pub fn update_recipes_list<C>(
             } else {
                 gtk::Label::new(Some(&format!("No recipes match '{}'", search_text)))
             };
-            no_recipes_label.set_margin_all(10);
+            no_recipes_label.set_margin_all(DEFAULT_MARGIN);
             no_recipes_row.set_child(Some(&no_recipes_label));
             recipes_list_box.append(&no_recipes_row);
         }
@@ -109,7 +110,7 @@ pub fn update_recipes_list<C>(
         // Data manager not available
         let no_data_row = gtk::ListBoxRow::new();
         let no_data_label = gtk::Label::new(Some("Failed to load recipe data"));
-        no_data_label.set_margin_all(10);
+        no_data_label.set_margin_all(DEFAULT_MARGIN);
         no_data_row.set_child(Some(&no_data_label));
         recipes_list_box.append(&no_data_row);
     }
@@ -130,11 +131,11 @@ where
     recipe_details_scroll.set_hexpand(true);
 
     if let Some(recipe) = data_manager.get_recipe(recipe_name) {
-        let recipe_box = gtk::Box::new(gtk::Orientation::Vertical, 10);
-        recipe_box.set_margin_all(15);
+        let recipe_box = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
+        recipe_box.set_margin_all(DETAILS_MARGIN);
 
         // Header with title and edit button
-        let header_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        let header_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
 
         let title_label = gtk::Label::new(None);
         title_label.set_markup(&format!(
@@ -162,8 +163,8 @@ where
         // Recipe tags
         if let Some(ref tags) = recipe.tags {
             if !tags.is_empty() {
-                let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-                tags_box.set_margin_bottom(10);
+                let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
+                tags_box.set_margin_bottom(DEFAULT_MARGIN);
 
                 for tag in tags {
                     let tag_button = gtk::Button::with_label(tag);
@@ -179,7 +180,7 @@ where
         let metadata_grid = gtk::Grid::new();
         metadata_grid.set_column_spacing(20);
         metadata_grid.set_row_spacing(5);
-        metadata_grid.set_margin_bottom(15);
+        metadata_grid.set_margin_bottom(HEADER_MARGIN);
 
         // Prep time
         let prep_label = gtk::Label::new(None);
@@ -229,15 +230,15 @@ where
         let ingredients_header = gtk::Label::new(None);
         ingredients_header.set_markup("<span size='large' weight='bold'>Ingredients</span>");
         ingredients_header.set_halign(gtk::Align::Start);
-        ingredients_header.set_margin_bottom(5);
+        ingredients_header.set_margin_bottom(LIST_ROW_MARGIN);
         recipe_box.append(&ingredients_header);
 
         // Ingredients list in a frame
         let ingredients_frame = gtk::Frame::new(None);
-        ingredients_frame.set_margin_bottom(15);
+        ingredients_frame.set_margin_bottom(HEADER_MARGIN);
 
         let ingredients_list = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        ingredients_list.set_margin_all(10);
+        ingredients_list.set_margin_all(DEFAULT_MARGIN);
 
         // Check which ingredients are in pantry
         let pantry_items = data_manager
@@ -251,8 +252,8 @@ where
             .unwrap_or_default();
 
         for ingredient in &recipe.ingredients {
-            let ingredient_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-            ingredient_box.set_margin_bottom(5);
+            let ingredient_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
+            ingredient_box.set_margin_bottom(LIST_ROW_MARGIN);
 
             // Add checkmark if ingredient is in pantry
             let is_in_pantry = pantry_items.contains(&ingredient.ingredient);
@@ -302,7 +303,7 @@ where
         let instructions_header = gtk::Label::new(None);
         instructions_header.set_markup("<span size='large' weight='bold'>Instructions</span>");
         instructions_header.set_halign(gtk::Align::Start);
-        instructions_header.set_margin_bottom(5);
+        instructions_header.set_margin_bottom(LIST_ROW_MARGIN);
         recipe_box.append(&instructions_header);
 
         // Instructions text
@@ -310,7 +311,7 @@ where
         let instructions_text = gtk::Label::new(Some(&recipe.instructions));
         instructions_text.set_wrap(true);
         instructions_text.set_halign(gtk::Align::Start);
-        instructions_text.set_margin_all(10);
+        instructions_text.set_margin_all(DEFAULT_MARGIN);
         instructions_frame.set_child(Some(&instructions_text));
         recipe_box.append(&instructions_frame);
 
@@ -386,18 +387,18 @@ pub fn show_edit_recipe_dialog(
     }
 
     let content_area = dialog.content_area();
-    content_area.set_margin_all(10);
-    content_area.set_spacing(10);
+    content_area.set_margin_all(DEFAULT_MARGIN);
+    content_area.set_spacing(SECTION_SPACING);
 
     let scrolled_window = gtk::ScrolledWindow::new();
     scrolled_window.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
     scrolled_window.set_vexpand(true);
 
-    let form_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
-    form_container.set_margin_all(10);
+    let form_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
+    form_container.set_margin_all(DEFAULT_MARGIN);
 
     // Title field
-    let title_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let title_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     let title_label = gtk::Label::new(Some("Title:"));
     title_label.set_halign(gtk::Align::Start);
     title_label.set_width_chars(12);
@@ -409,7 +410,7 @@ pub fn show_edit_recipe_dialog(
     content_area.append(&title_box);
 
     // Prep time field
-    let prep_time_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let prep_time_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     let prep_time_label = gtk::Label::new(Some("Prep Time (min):"));
     prep_time_label.set_halign(gtk::Align::Start);
     prep_time_label.set_width_chars(12);
@@ -423,7 +424,7 @@ pub fn show_edit_recipe_dialog(
     content_area.append(&prep_time_box);
 
     // Downtime field
-    let downtime_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let downtime_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     let downtime_label = gtk::Label::new(Some("Cook Time (min):"));
     downtime_label.set_halign(gtk::Align::Start);
     downtime_label.set_width_chars(12);
@@ -437,7 +438,7 @@ pub fn show_edit_recipe_dialog(
     content_area.append(&downtime_box);
 
     // Servings field
-    let servings_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let servings_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     let servings_label = gtk::Label::new(Some("Servings:"));
     servings_label.set_halign(gtk::Align::Start);
     servings_label.set_width_chars(12);
@@ -451,7 +452,7 @@ pub fn show_edit_recipe_dialog(
     content_area.append(&servings_box);
 
     // Tags field (comma-separated)
-    let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     let tags_label = gtk::Label::new(Some("Tags:"));
     tags_label.set_halign(gtk::Align::Start);
     tags_label.set_width_chars(12);
@@ -472,11 +473,11 @@ pub fn show_edit_recipe_dialog(
     content_area.append(&ingredients_label);
 
     // Ingredients container (will hold ingredient rows)
-    let ingredients_container = gtk::Box::new(gtk::Orientation::Vertical, 5);
+    let ingredients_container = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
 
     // Add existing ingredients
     for ingredient in &recipe.ingredients {
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
 
         let name_entry = gtk::Entry::new();
         name_entry.set_text(&ingredient.ingredient);
@@ -522,7 +523,7 @@ pub fn show_edit_recipe_dialog(
 
     let ingredients_container_ref = ingredients_container.clone();
     add_ingredient_button.connect_clicked(move |_| {
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
 
         let name_entry = gtk::Entry::new();
         name_entry.set_placeholder_text(Some("Ingredient name"));
@@ -709,14 +710,14 @@ pub fn build_recipes_tab(
     sender: &ComponentSender<AppModel>,
 ) -> (gtk::Box, gtk::ListBox, gtk::Box) {
     // Main vertical container for the Recipes tab
-    let recipes_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    let recipes_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
 
     // Header: title + search
-    let recipes_header = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    recipes_header.set_margin_top(10);
-    recipes_header.set_margin_bottom(10);
-    recipes_header.set_margin_start(10);
-    recipes_header.set_margin_end(10);
+    let recipes_header = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
+    recipes_header.set_margin_top(DEFAULT_MARGIN);
+    recipes_header.set_margin_bottom(DEFAULT_MARGIN);
+    recipes_header.set_margin_start(DEFAULT_MARGIN);
+    recipes_header.set_margin_end(DEFAULT_MARGIN);
 
     let recipes_title = gtk::Label::new(Some("Recipes"));
     recipes_title.set_markup("<span size='x-large' weight='bold'>Recipes</span>");
@@ -736,7 +737,7 @@ pub fn build_recipes_tab(
     recipes_container.append(&recipes_header);
 
     // Split view: list (left), details (right)
-    let recipes_content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let recipes_content = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     recipes_content.set_hexpand(true);
     recipes_content.set_vexpand(true);
 
@@ -774,7 +775,7 @@ pub fn build_recipes_tab(
     recipes_list_scroll.set_child(Some(&recipes_list_box));
 
     // Recipe details view (right side)
-    let recipes_details = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    let recipes_details = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
     recipes_details.set_hexpand(true);
     recipes_details.set_vexpand(true);
 

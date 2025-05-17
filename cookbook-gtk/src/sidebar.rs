@@ -3,21 +3,22 @@ use relm4::gtk;
 use relm4::ComponentSender;
 
 use crate::types::{AppModel, AppMsg, Tab};
+use crate::ui_constants::*;
 
 /// Builds the sidebar UI for the application
 pub fn build_sidebar(sender: &ComponentSender<AppModel>) -> (gtk::Box, Vec<gtk::Button>) {
     // Create the sidebar container
     let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    sidebar.set_margin_top(10);
-    sidebar.set_margin_bottom(10);
-    sidebar.set_margin_start(10);
-    sidebar.set_margin_end(10);
+    sidebar.set_margin_top(DEFAULT_MARGIN);
+    sidebar.set_margin_bottom(DEFAULT_MARGIN);
+    sidebar.set_margin_start(DEFAULT_MARGIN);
+    sidebar.set_margin_end(DEFAULT_MARGIN);
     sidebar.set_width_request(200);
 
     // Sidebar heading
     let sidebar_heading = gtk::Label::new(Some("Navigation"));
     sidebar_heading.set_halign(gtk::Align::Start);
-    sidebar_heading.set_margin_bottom(10);
+    sidebar_heading.set_margin_bottom(DEFAULT_MARGIN);
     sidebar.append(&sidebar_heading);
 
     // Create sidebar buttons and store them for styling
@@ -69,8 +70,8 @@ pub fn build_sidebar(sender: &ComponentSender<AppModel>) -> (gtk::Box, Vec<gtk::
 
     // Add a separator between main tabs and settings/help
     let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
-    separator.set_margin_top(10);
-    separator.set_margin_bottom(10);
+    separator.set_margin_top(DEFAULT_MARGIN);
+    separator.set_margin_bottom(DEFAULT_MARGIN);
     sidebar.append(&separator);
 
     sidebar.append(&settings_button);

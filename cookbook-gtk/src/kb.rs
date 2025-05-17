@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use crate::types::AppModel;
 use crate::types::AppMsg;
+use crate::ui_constants::*;
 use crate::utils;
 
 /// Updates the KB entry list based on search text and other filters
@@ -37,7 +38,7 @@ pub fn update_kb_list<C>(
                 title_label.set_margin_start(5);
                 title_label.set_margin_end(5);
                 title_label.set_margin_top(5);
-                title_label.set_margin_bottom(5);
+                title_label.set_margin_bottom(LIST_ROW_MARGIN);
                 row.set_child(Some(&title_label));
 
                 kb_list_box.append(&row);
@@ -58,14 +59,14 @@ pub fn update_kb_list<C>(
         } else {
             let no_entries_row = gtk::ListBoxRow::new();
             let no_entries_label = gtk::Label::new(Some("No KB entries available"));
-            no_entries_label.set_margin_all(10);
+            no_entries_label.set_margin_all(DEFAULT_MARGIN);
             no_entries_row.set_child(Some(&no_entries_label));
             kb_list_box.append(&no_entries_row);
         }
     } else {
         let no_data_row = gtk::ListBoxRow::new();
         let no_data_label = gtk::Label::new(Some("Failed to load KB data"));
-        no_data_label.set_margin_all(10);
+        no_data_label.set_margin_all(DEFAULT_MARGIN);
         no_data_row.set_child(Some(&no_data_label));
         kb_list_box.append(&no_data_row);
     }
@@ -83,8 +84,8 @@ pub fn build_kb_detail_view(
 
     // Find the selected KB entry
     if let Some(kb_entry) = data_manager.get_kb_entry(kb_slug) {
-        let details_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
-        details_container.set_margin_all(10);
+        let details_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
+        details_container.set_margin_all(DEFAULT_MARGIN);
 
         // Title
         let title = gtk::Label::new(None);
@@ -93,7 +94,7 @@ pub fn build_kb_detail_view(
             kb_entry.title
         ));
         title.set_halign(gtk::Align::Start);
-        title.set_margin_bottom(10);
+        title.set_margin_bottom(DEFAULT_MARGIN);
         details_container.append(&title);
 
         // Image (if available)
@@ -103,7 +104,7 @@ pub fn build_kb_detail_view(
             if image_path.exists() {
                 let image = gtk::Image::from_file(&image_path);
                 image.set_halign(gtk::Align::Center);
-                image.set_margin_bottom(15);
+                image.set_margin_bottom(HEADER_MARGIN);
                 details_container.append(&image);
             } else {
                 eprintln!("Image not found: {:?}", image_path);
@@ -111,7 +112,7 @@ pub fn build_kb_detail_view(
                 // Add a placeholder for missing image
                 let missing_label = gtk::Label::new(Some("Image not available"));
                 missing_label.set_halign(gtk::Align::Center);
-                missing_label.set_margin_bottom(15);
+                missing_label.set_margin_bottom(HEADER_MARGIN);
                 details_container.append(&missing_label);
             }
         }
@@ -122,13 +123,13 @@ pub fn build_kb_detail_view(
             let related_label = gtk::Label::new(None);
             related_label.set_markup("<span weight='bold'>Related Ingredients:</span>");
             related_label.set_halign(gtk::Align::Start);
-            related_label.set_margin_top(5);
-            related_label.set_margin_bottom(5);
+            related_label.set_margin_top(LIST_ROW_MARGIN);
+            related_label.set_margin_bottom(LIST_ROW_MARGIN);
             details_container.append(&related_label);
 
-            let ingredients_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-            ingredients_box.set_margin_start(10);
-            ingredients_box.set_margin_bottom(10);
+            let ingredients_box = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
+            ingredients_box.set_margin_start(DEFAULT_MARGIN);
+            ingredients_box.set_margin_bottom(DEFAULT_MARGIN);
 
             for ingredient in related_ingredients {
                 let ingredient_chip = gtk::Button::with_label(&ingredient.name);
@@ -232,17 +233,17 @@ pub fn build_kb_tab(
     sender: &ComponentSender<AppModel>,
 ) -> (gtk::Box, gtk::ListBox, gtk::Box, gtk::Label) {
     // Main container
-    let kb_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    let kb_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
 
     // Title
     let kb_title = gtk::Label::new(Some("Knowledge Base"));
     kb_title.set_markup("<span size='x-large' weight='bold'>Knowledge Base</span>");
     kb_title.set_halign(gtk::Align::Start);
-    kb_title.set_margin_all(10);
+    kb_title.set_margin_all(DEFAULT_MARGIN);
     kb_container.append(&kb_title);
 
     // Split view
-    let kb_content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let kb_content = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     kb_content.set_hexpand(true);
     kb_content.set_vexpand(true);
 
@@ -265,10 +266,10 @@ pub fn build_kb_tab(
                 let row = gtk::ListBoxRow::new();
                 let title_label = gtk::Label::new(Some(&entry.title));
                 title_label.set_halign(gtk::Align::Start);
-                title_label.set_margin_start(5);
-                title_label.set_margin_end(5);
-                title_label.set_margin_top(5);
-                title_label.set_margin_bottom(5);
+                title_label.set_margin_start(LIST_ROW_MARGIN);
+                title_label.set_margin_end(LIST_ROW_MARGIN);
+                title_label.set_margin_top(LIST_ROW_MARGIN);
+                title_label.set_margin_bottom(LIST_ROW_MARGIN);
                 row.set_child(Some(&title_label));
                 // Store the slug in the row's widget name for retrieval
                 row.set_widget_name(&entry.slug);
@@ -286,14 +287,14 @@ pub fn build_kb_tab(
         } else {
             let no_entries_row = gtk::ListBoxRow::new();
             let no_entries_label = gtk::Label::new(Some("No KB entries available"));
-            no_entries_label.set_margin_all(10);
+            no_entries_label.set_margin_all(DEFAULT_MARGIN);
             no_entries_row.set_child(Some(&no_entries_label));
             kb_list_box.append(&no_entries_row);
         }
     } else {
         let no_data_row = gtk::ListBoxRow::new();
         let no_data_label = gtk::Label::new(Some("Failed to load KB data"));
-        no_data_label.set_margin_all(10);
+        no_data_label.set_margin_all(DEFAULT_MARGIN);
         no_data_row.set_child(Some(&no_data_label));
         kb_list_box.append(&no_data_row);
     }
@@ -301,7 +302,7 @@ pub fn build_kb_tab(
     kb_list_scroll.set_child(Some(&kb_list_box));
 
     // Details
-    let kb_details = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    let kb_details = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
     kb_details.set_hexpand(true);
     kb_details.set_vexpand(true);
 

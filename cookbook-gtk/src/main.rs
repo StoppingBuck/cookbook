@@ -11,6 +11,7 @@ mod settings;
 mod sidebar;
 mod tabs;
 mod types;
+mod ui_constants;
 mod utils;
 
 // First, we import the necessary libraries and modules
@@ -32,7 +33,8 @@ use relm4::ComponentParts; // Import to create component parts with model and wi
 use relm4::ComponentSender; // Import to send messages between components
 use relm4::RelmApp; // Import application runner for relm4
 use relm4::RelmWidgetExt;
-use relm4::SimpleComponent; // Import trait for implementing UI components
+use relm4::SimpleComponent;
+use ui_constants::*; // Import trait for implementing UI components
 use std::env; // Import env for accessing environment variables
 use std::path::PathBuf; // Import PathBuf for handling file paths
 use std::rc::Rc; // Import Rc for reference counting // Import extension traits for widgets
@@ -124,9 +126,9 @@ impl SimpleComponent for AppModel {
 
         // Create the main stack for switching between tab content
         let main_stack = gtk::Stack::new();
-        main_stack.set_margin_top(10);
-        main_stack.set_margin_bottom(10);
-        main_stack.set_margin_end(10);
+        main_stack.set_margin_top(DEFAULT_MARGIN);
+        main_stack.set_margin_bottom(DEFAULT_MARGIN);
+        main_stack.set_margin_end(DEFAULT_MARGIN);
         main_stack.set_hexpand(true);
         main_stack.set_vexpand(true);
 

@@ -1,5 +1,6 @@
 use crate::types::AppModel;
 use crate::types::{AppMsg, Tab};
+use crate::ui_constants::*;
 use crate::utils;
 use cookbook_engine::DataManager;
 use gtk::glib;
@@ -77,7 +78,7 @@ pub fn rebuild_pantry_list<C>(
             for category in sorted_categories {
                 // Create category header
                 let category_frame = gtk::Frame::new(Some(&category));
-                category_frame.set_margin_bottom(10);
+                category_frame.set_margin_bottom(DEFAULT_MARGIN);
 
                 let category_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
                 category_frame.set_child(Some(&category_box));
@@ -87,8 +88,8 @@ pub fn rebuild_pantry_list<C>(
                     items.sort_by(|a, b| a.0.cmp(&b.0));
 
                     for (name, quantity, quantity_type, is_in_stock) in items.iter() {
-                        let item_row = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-                        item_row.set_margin_all(5);
+                        let item_row = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
+                        item_row.set_margin_all(LIST_ROW_MARGIN);
 
                         // Create the item label with quantity if available
                         let mut label_text = name.clone();
@@ -137,7 +138,7 @@ pub fn rebuild_pantry_list<C>(
     } else {
         // No data available
         let no_data_label = gtk::Label::new(Some("No ingredient data available"));
-        no_data_label.set_margin_all(10);
+        no_data_label.set_margin_all(DEFAULT_MARGIN);
         pantry_list.append(&no_data_label);
     }
 }
@@ -156,13 +157,13 @@ where
     C: relm4::Component,
 {
     // Create a small details view
-    let details_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
-    details_container.set_margin_all(10);
+    let details_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
+    details_container.set_margin_all(DEFAULT_MARGIN);
 
     if let Some(ingredient) = data_manager.get_ingredient(ingredient_name) {
         // Title with ingredient name and edit button in a horizontal box
-        let title_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        title_box.set_margin_bottom(10);
+        let title_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
+        title_box.set_margin_bottom(DEFAULT_MARGIN);
 
         let title = gtk::Label::new(None);
         title.set_markup(&format!(
@@ -190,7 +191,7 @@ where
         let category_label = gtk::Label::new(None);
         category_label.set_markup(&format!("<b>Category:</b> {}", ingredient.category));
         category_label.set_halign(gtk::Align::Start);
-        category_label.set_margin_bottom(5);
+        category_label.set_margin_bottom(LIST_ROW_MARGIN);
         details_container.append(&category_label);
 
         // Tags (if any)
@@ -199,12 +200,12 @@ where
                 let tags_label = gtk::Label::new(None);
                 tags_label.set_markup("<b>Tags:</b>");
                 tags_label.set_halign(gtk::Align::Start);
-                tags_label.set_margin_bottom(5);
+                tags_label.set_margin_bottom(LIST_ROW_MARGIN);
                 details_container.append(&tags_label);
 
-                let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-                tags_box.set_margin_start(10);
-                tags_box.set_margin_bottom(10);
+                let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
+                tags_box.set_margin_start(DEFAULT_MARGIN);
+                tags_box.set_margin_bottom(DEFAULT_MARGIN);
 
                 for tag in tags {
                     let tag_button = gtk::Button::new();
@@ -219,9 +220,9 @@ where
 
         // Knowledge Base Link (if available)
         if let Some(kb_entry) = data_manager.get_kb_entry_for_ingredient(&ingredient.name) {
-            let kb_box = gtk::Box::new(gtk::Orientation::Vertical, 5);
-            kb_box.set_margin_top(10);
-            kb_box.set_margin_bottom(10);
+            let kb_box = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
+            kb_box.set_margin_top(DEFAULT_MARGIN);
+            kb_box.set_margin_bottom(DEFAULT_MARGIN);
 
             let kb_label = gtk::Label::new(None);
             kb_label.set_markup("<b>Knowledge Base Entry:</b>");
@@ -256,7 +257,7 @@ where
             {
                 // Find the pantry item
                 let stock_label = gtk::Label::new(None);
-                stock_label.set_margin_top(10);
+                stock_label.set_margin_top(DEFAULT_MARGIN);
 
                 // Check if the item is in stock
                 if let Some(quantity) = pantry_item.quantity {
@@ -284,13 +285,13 @@ where
                     pantry_item.last_updated
                 ));
                 updated_label.set_halign(gtk::Align::Start);
-                updated_label.set_margin_bottom(10);
+                updated_label.set_margin_bottom(DEFAULT_MARGIN);
                 details_container.append(&updated_label);
             } else {
                 let not_in_stock_label = gtk::Label::new(None);
                 not_in_stock_label.set_markup("<b>Not in pantry</b>");
                 not_in_stock_label.set_halign(gtk::Align::Start);
-                not_in_stock_label.set_margin_top(10);
+                not_in_stock_label.set_margin_top(DEFAULT_MARGIN);
                 details_container.append(&not_in_stock_label);
             }
         }
@@ -309,12 +310,12 @@ where
                 ingredient.name
             ));
             recipes_header.set_halign(gtk::Align::Start);
-            recipes_header.set_margin_top(15);
-            recipes_header.set_margin_bottom(5);
+            recipes_header.set_margin_top(DETAILS_MARGIN);
+            recipes_header.set_margin_bottom(LIST_ROW_MARGIN);
             details_container.append(&recipes_header);
 
-            let recipes_box = gtk::Box::new(gtk::Orientation::Vertical, 5);
-            recipes_box.set_margin_start(10);
+            let recipes_box = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
+            recipes_box.set_margin_start(DEFAULT_MARGIN);
 
             for recipe in recipes_with_ingredient {
                 let recipe_button = gtk::Button::new();
@@ -426,11 +427,11 @@ pub fn show_edit_ingredient_dialog(
     }
 
     let content_area = dialog.content_area();
-    content_area.set_margin_all(10);
-    content_area.set_spacing(10);
+    content_area.set_margin_all(DEFAULT_MARGIN);
+    content_area.set_spacing(SECTION_SPACING);
 
     // Name field
-    let name_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let name_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     let name_label = gtk::Label::new(Some("Name:"));
     name_label.set_halign(gtk::Align::Start);
     name_label.set_width_chars(12);
@@ -442,7 +443,7 @@ pub fn show_edit_ingredient_dialog(
     content_area.append(&name_box);
 
     // Category field
-    let category_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let category_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     let category_label = gtk::Label::new(Some("Category:"));
     category_label.set_halign(gtk::Align::Start);
     category_label.set_width_chars(12);
@@ -454,7 +455,7 @@ pub fn show_edit_ingredient_dialog(
     content_area.append(&category_box);
 
     // KB field
-    let kb_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let kb_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     let kb_label = gtk::Label::new(Some("KB Reference:"));
     kb_label.set_halign(gtk::Align::Start);
     kb_label.set_width_chars(12);
@@ -468,7 +469,7 @@ pub fn show_edit_ingredient_dialog(
     content_area.append(&kb_box);
 
     // Tags field (comma-separated)
-    let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     let tags_label = gtk::Label::new(Some("Tags:"));
     tags_label.set_halign(gtk::Align::Start);
     tags_label.set_width_chars(12);
@@ -488,7 +489,7 @@ pub fn show_edit_ingredient_dialog(
     content_area.append(&in_stock_check);
 
     // Pantry quantity fields
-    let quantity_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let quantity_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     let quantity_label = gtk::Label::new(Some("Quantity:"));
     quantity_label.set_halign(gtk::Align::Start);
     quantity_label.set_width_chars(12);
@@ -498,7 +499,7 @@ pub fn show_edit_ingredient_dialog(
     content_area.append(&quantity_box);
 
     // Quantity type field
-    let quantity_type_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let quantity_type_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     let quantity_type_label = gtk::Label::new(Some("Unit:"));
     quantity_type_label.set_halign(gtk::Align::Start);
     quantity_type_label.set_width_chars(12);
@@ -677,28 +678,28 @@ pub fn build_pantry_tab(
     gtk::Label,  // pantry_title
 ) {
     // Main container for the Pantry tab
-    let pantry_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    let pantry_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
 
     // Title
     let pantry_title = gtk::Label::new(Some("Pantry"));
     pantry_title.set_markup("<span size='x-large' weight='bold'>Pantry</span>");
     pantry_title.set_halign(gtk::Align::Start);
-    pantry_title.set_margin_all(10);
+    pantry_title.set_margin_all(DEFAULT_MARGIN);
 
     // Filters frame
     let filters_frame = gtk::Frame::new(None);
-    filters_frame.set_margin_bottom(10);
+    filters_frame.set_margin_bottom(DEFAULT_MARGIN);
 
-    let filters_container = gtk::Box::new(gtk::Orientation::Vertical, 5);
-    filters_container.set_margin_all(10);
+    let filters_container = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
+    filters_container.set_margin_all(DEFAULT_MARGIN);
 
     // Category filters
     let category_filters_label = gtk::Label::new(Some("Categories:"));
     category_filters_label.set_halign(gtk::Align::Start);
-    category_filters_label.set_margin_bottom(5);
+    category_filters_label.set_margin_bottom(LIST_ROW_MARGIN);
 
-    let category_filters_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    category_filters_box.set_margin_bottom(10);
+    let category_filters_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
+    category_filters_box.set_margin_bottom(DEFAULT_MARGIN);
 
     // Get unique categories from ingredients using the engine's method
     let mut categories: Vec<String> = Vec::new();
@@ -722,7 +723,7 @@ pub fn build_pantry_tab(
     }
 
     // In-stock only filter
-    let stock_filter_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let stock_filter_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     let stock_filter_label = gtk::Label::new(Some("Show in-stock items only:"));
     stock_filter_label.set_halign(gtk::Align::Start);
 
@@ -745,13 +746,13 @@ pub fn build_pantry_tab(
     pantry_container.append(&filters_frame);
 
     // Split view for pantry (list on left, details on right)
-    let pantry_content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let pantry_content = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     pantry_content.set_hexpand(true);
     pantry_content.set_vexpand(true);
-    pantry_content.set_margin_top(10);
-    pantry_content.set_margin_start(10);
-    pantry_content.set_margin_end(10);
-    pantry_content.set_margin_bottom(10);
+    pantry_content.set_margin_top(DEFAULT_MARGIN);
+    pantry_content.set_margin_start(DEFAULT_MARGIN);
+    pantry_content.set_margin_end(DEFAULT_MARGIN);
+    pantry_content.set_margin_bottom(DEFAULT_MARGIN);
 
     // Pantry list
     let pantry_list_scroll = gtk::ScrolledWindow::new();
@@ -764,7 +765,7 @@ pub fn build_pantry_tab(
     pantry_list_scroll.set_child(Some(&pantry_list_container));
 
     // Pantry details (right side)
-    let pantry_details_box = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    let pantry_details_box = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
     pantry_details_box.set_hexpand(true);
     pantry_details_box.set_vexpand(true);
 
