@@ -959,4 +959,28 @@ impl DataManager {
         self.ingredients.insert(ingredient.name.clone(), ingredient);
         Ok(())
     }
+    
+    /// Deletes an ingredient by name, and removes it from the pantry if present
+    pub fn delete_ingredient(&mut self, ingredient_name: &str) -> Result<bool, CookbookError> {
+        // Remove from ingredients map
+        if self.ingredients.remove(ingredient_name).is_none() {
+            return Err(CookbookError::UpdateError(format!("Ingredient '{}' does not exist", ingredient_name)));
+        }
+        // Remove ingredient file
+        let ingredients_dir = self.data_dir.join("ingredients");
+        let path = ingredients_dir.join(format!("{}.yaml", ingredient_name.replace(" ", "_")));
+        if path.exists() {
+            std::fs::remove_file(&path).map_err(|e| CookbookError::WriteError(format!("Failed to remove ingredient file: {}", e)))?;
+        }
+        // Remove from pantry if present
+        if let Some(pantry) = self.pantry.as_mut() {
+            let original_len = pantry.items.len();
+            pantry.items.retain(|item| item.ingredient != ingredient_name);
+            let pantry_path = self.data_dir.join("pantry.yaml");
+            pantry.to_file(pantry_path)?;
+            Ok(true)
+        } else {
+            Ok(true)
+        }
+    }
 }

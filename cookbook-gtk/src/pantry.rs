@@ -209,6 +209,68 @@ where
         });
         title_box.append(&edit_button);
 
+        // Add Delete button (only enabled if not blank ingredient)
+        if !ingredient.name.trim().is_empty() {
+            let delete_button = gtk::Button::with_label("Delete");
+            delete_button.add_css_class("destructive-action");
+            let sender_clone = sender.clone();
+            let data_manager_clone = data_manager.clone();
+            let ingredient_name_clone = ingredient.name.clone();
+            // Use the correct closure signature for select_ingredient_msg
+            let select_ingredient_msg = edit_ingredient_msg.clone();
+            delete_button.connect_clicked(move |_| {
+                let rc_dm = &data_manager_clone;
+                // Check if any recipe uses this ingredient
+                let usage = rc_dm.get_ingredient_usage();
+                if let Some(recipes) = usage.get(&ingredient_name_clone) {
+                    if !recipes.is_empty() {
+                        // Fix: collect titles as Vec<String> for join
+                        let recipe_titles: Vec<String> = recipes.iter().map(|r| r.title.clone()).collect();
+                        let msg = format!(
+                            "Cannot delete ingredient '{}': used in recipes: {}",
+                            ingredient_name_clone,
+                            recipe_titles.join(", ")
+                        );
+                        let error_dialog = gtk::MessageDialog::new(
+                            None::<&gtk::Window>,
+                            gtk::DialogFlags::MODAL,
+                            gtk::MessageType::Error,
+                            gtk::ButtonsType::Ok,
+                            &msg,
+                        );
+                        error_dialog.connect_response(|dialog, _| dialog.destroy());
+                        error_dialog.show();
+                        return;
+                    }
+                }
+                // Safe to delete
+                let data_dir = rc_dm.get_data_dir().to_path_buf();
+                let mut dm = cookbook_engine::DataManager::new(&data_dir).unwrap();
+                match dm.delete_ingredient(&ingredient_name_clone) {
+                    Ok(_) => {
+                        sender_clone.input(edit_ingredient_msg(String::new()));
+                        // Use a closure to send ReloadPantry if C::Input is not AppMsg
+                        #[allow(unused_variables)]
+                        if let Some(appmsg_sender) = (&sender_clone as &dyn std::any::Any).downcast_ref::<ComponentSender<AppModel>>() {
+                            appmsg_sender.input(AppMsg::ReloadPantry);
+                        }
+                    }
+                    Err(err) => {
+                        let error_dialog = gtk::MessageDialog::new(
+                            None::<&gtk::Window>,
+                            gtk::DialogFlags::MODAL,
+                            gtk::MessageType::Error,
+                            gtk::ButtonsType::Ok,
+                            &format!("Failed to delete ingredient: {}", err),
+                        );
+                        error_dialog.connect_response(|dialog, _| dialog.destroy());
+                        error_dialog.show();
+                    }
+                }
+            });
+            title_box.append(&delete_button);
+        }
+
         details_container.append(&title_box);
 
         // Category
