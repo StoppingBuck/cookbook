@@ -26,7 +26,6 @@ pub fn rebuild_pantry_list<C>(
     // Clear current list
     utils::clear_box(&pantry_list);
 
-
     if let Some(ref dm) = data_manager {
         let _pantry = dm.get_pantry(); // Prefix with underscore to avoid unused variable warning
 
@@ -115,6 +114,31 @@ pub fn rebuild_pantry_list<C>(
                         item_label.set_halign(gtk::Align::Start);
                         item_label.set_hexpand(true);
                         item_row.append(&item_label);
+
+                        // Check if this ingredient has a KB entry
+                        let has_kb = if let Some(ref dm) = data_manager {
+                            if let Some(ingredient) = dm.get_ingredient(name) {
+                                if let Some(ref kb_slug) = ingredient.kb {
+                                    // Only show if the KB entry actually exists
+                                    dm.get_kb_entry(kb_slug).is_some()
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+
+                        if has_kb {
+                            let kb_icon = gtk::Image::from_icon_name("emblem-ok-symbolic"); // Use a book icon from your icon theme
+                            kb_icon.set_pixel_size(16);
+                            kb_icon.set_halign(gtk::Align::End);
+                            kb_icon.set_valign(gtk::Align::Center);
+                            kb_icon.set_hexpand(false);
+                            item_row.append(&kb_icon);
+                        }
 
                         // Make the row selectable
                         let click_gesture = gtk::GestureClick::new();
@@ -371,7 +395,6 @@ pub fn update_pantry_details<C>(
 {
     // Clear previous content
     utils::clear_box(&pantry_details);
-
 
     if let Some(ingredient_name) = selected_ingredient {
         if let Some(ref dm) = data_manager {

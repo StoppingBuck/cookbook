@@ -1,5 +1,5 @@
 ---
-Title: Pastaa
+Title: Pastaaa
 Ingredients:
 - ingredient: potato
   quantity: 22.0
