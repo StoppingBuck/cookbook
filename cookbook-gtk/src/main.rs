@@ -8,6 +8,7 @@ mod kb;
 mod pantry;
 mod recipes;
 mod sidebar;
+mod tabs;
 mod types;
 
 // First, we import the necessary libraries and modules
@@ -1453,30 +1454,10 @@ impl SimpleComponent for AppModel {
     // update_view updates the UI based on the current model state
     fn update_view(&self, widgets: &mut Self::Widgets, sender: ComponentSender<Self>) {
         // Update the main stack to show the current tab
-        match self.current_tab {
-            Tab::Recipes => widgets.main_stack.set_visible_child_name("recipes"),
-            Tab::Pantry => widgets.main_stack.set_visible_child_name("pantry"),
-            Tab::KnowledgeBase => widgets.main_stack.set_visible_child_name("kb"),
-            Tab::Settings => widgets.main_stack.set_visible_child_name("settings"),
-        }
+        tabs::update_tab_view(&self.current_tab, &widgets.main_stack);
 
         // Update sidebar button styles based on the current tab
-        for (i, button) in widgets.sidebar_buttons.iter().enumerate() {
-            let tab = match i {
-                0 => Tab::Recipes,
-                1 => Tab::Pantry,
-                2 => Tab::KnowledgeBase,
-                3 => Tab::Settings,
-                _ => continue,
-            };
-
-            // Remove the "suggested-action" class from all buttons except the current tab (common GTK pattern for showing active button)
-            if tab == self.current_tab {
-                button.add_css_class("suggested-action");
-            } else {
-                button.remove_css_class("suggested-action");
-            }
-        }
+        sidebar::update_sidebar_buttons(&self.current_tab, &widgets.sidebar_buttons);
 
         // Select the correct recipe in the list box when a recipe is selected
         if self.current_tab == Tab::Recipes && self.selected_recipe.is_some() {

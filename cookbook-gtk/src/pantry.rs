@@ -1,3 +1,4 @@
+use crate::types::{AppMsg, Tab};
 use cookbook_engine::DataManager;
 use gtk::prelude::*;
 use relm4::gtk;
@@ -27,11 +28,8 @@ pub fn rebuild_pantry_list<C>(
         let _pantry = dm.get_pantry(); // Prefix with underscore to avoid unused variable warning
 
         // Use engine method to filter ingredients
-        let filtered_ingredients = dm.filter_ingredients(
-            search_text,
-            selected_categories,
-            show_in_stock_only,
-        );
+        let filtered_ingredients =
+            dm.filter_ingredients(search_text, selected_categories, show_in_stock_only);
 
         // Convert filtered ingredients to the format expected by the UI
         let mut pantry_items_by_category: HashMap<
@@ -43,7 +41,7 @@ pub fn rebuild_pantry_list<C>(
             let is_in_stock = dm.is_in_pantry(&ingredient.name);
 
             // Get quantity information if in pantry
-            let (quantity, quantity_type) = 
+            let (quantity, quantity_type) =
                 if let Some(pantry_item) = dm.get_pantry_item(&ingredient.name) {
                     (
                         pantry_item.quantity.map(|q| q.to_string()),
@@ -65,14 +63,12 @@ pub fn rebuild_pantry_list<C>(
         }
 
         // Sort categories and ingredients
-        let mut sorted_categories: Vec<String> =
-            pantry_items_by_category.keys().cloned().collect();
+        let mut sorted_categories: Vec<String> = pantry_items_by_category.keys().cloned().collect();
         sorted_categories.sort();
 
         if pantry_items_by_category.is_empty() {
             // No items match the filters
-            let no_items_label =
-                gtk::Label::new(Some("No ingredients match the current filters"));
+            let no_items_label = gtk::Label::new(Some("No ingredients match the current filters"));
             no_items_label.set_margin_all(20);
             pantry_list.append(&no_items_label);
         } else {
@@ -145,13 +141,13 @@ pub fn rebuild_pantry_list<C>(
 
 /// Builds and returns the pantry ingredient detail view for a selected ingredient
 pub fn build_ingredient_detail_view<C>(
-    data_manager: &Rc<DataManager>, 
+    data_manager: &Rc<DataManager>,
     ingredient_name: &str,
     sender: &ComponentSender<C>,
     switch_tab_msg: impl Fn(crate::Tab) -> C::Input + Clone + 'static,
     select_kb_entry_msg: impl Fn(String) -> C::Input + Clone + 'static,
     select_recipe_msg: impl Fn(String) -> C::Input + Clone + 'static,
-    edit_ingredient_msg: impl Fn(String) -> C::Input + Clone + 'static
+    edit_ingredient_msg: impl Fn(String) -> C::Input + Clone + 'static,
 ) -> gtk::Box
 where
     C: relm4::Component,
@@ -256,7 +252,7 @@ where
                 .find(|item| item.ingredient == ingredient.name)
             {
                 // Find the pantry item
-                let stock_label = gtk::Label::new(None); 
+                let stock_label = gtk::Label::new(None);
                 stock_label.set_margin_top(10);
 
                 // Check if the item is in stock
@@ -348,14 +344,57 @@ where
         }
     } else {
         // Ingredient not found
-        let not_found_label = gtk::Label::new(Some(&format!(
-            "Ingredient '{}' not found",
-            ingredient_name
-        )));
+        let not_found_label =
+            gtk::Label::new(Some(&format!("Ingredient '{}' not found", ingredient_name)));
         not_found_label.set_halign(gtk::Align::Center);
         not_found_label.set_valign(gtk::Align::Center);
         details_container.append(&not_found_label);
     }
-    
+
     details_container
+}
+/// Updates the pantry details view based on the selected ingredient
+/// Updates the pantry details view based on the selected ingredient
+pub fn update_pantry_details<C>(
+    selected_ingredient: Option<&str>,
+    pantry_details: &gtk::Box,
+    data_manager: &Option<std::rc::Rc<cookbook_engine::DataManager>>,
+    sender: &ComponentSender<C>,
+) where
+    C: relm4::Component<Input = AppMsg>,  // Add this constraint
+{
+    // Clear previous content
+    while let Some(child) = pantry_details.first_child() {
+        pantry_details.remove(&child);
+    }
+
+    if let Some(ingredient_name) = selected_ingredient {
+        if let Some(ref dm) = data_manager {
+            // Build the ingredient detail view
+            let details_view = build_ingredient_detail_view(
+                dm,
+                ingredient_name,
+                sender,
+                AppMsg::SwitchTab,
+                AppMsg::SelectKnowledgeBaseEntry,
+                AppMsg::SelectRecipe,
+                AppMsg::EditIngredient,
+            );
+            pantry_details.append(&details_view);
+        } else {
+            // Data manager not available
+            let error_label = gtk::Label::new(Some(
+                "Unable to load ingredient: data manager not available",
+            ));
+            error_label.set_halign(gtk::Align::Center);
+            error_label.set_valign(gtk::Align::Center);
+            pantry_details.append(&error_label);
+        }
+    } else {
+        // No ingredient selected, show placeholder
+        let select_label = gtk::Label::new(Some("Select an ingredient to view details"));
+        select_label.set_halign(gtk::Align::Center);
+        select_label.set_valign(gtk::Align::Center);
+        pantry_details.append(&select_label);
+    }
 }
