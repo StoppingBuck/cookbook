@@ -669,6 +669,20 @@ pub fn show_edit_recipe_dialog(
     };
     image_section.append(&image_preview);
     let set_image_button = gtk::Button::with_label("Set Image");
+    let clear_image_button = gtk::Button::with_label("Clear Image");
+    // Track if the image was cleared
+    let cleared_image: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+    // For updating preview and state
+    let image_preview_clone = image_preview.clone();
+    let recipe_image_field_clone = recipe.image.clone();
+    let cleared_image_clone = cleared_image.clone();
+    clear_image_button.connect_clicked(move |_| {
+        if recipe_image_field_clone.is_some() {
+            image_preview_clone.set_from_pixbuf(None::<&gdk_pixbuf::Pixbuf>);
+            *cleared_image_clone.borrow_mut() = recipe_image_field_clone.clone();
+            // Optionally, set selected_image_path to None as well
+        }
+    });
     let selected_image_path_clone = selected_image_path.clone();
     set_image_button.connect_clicked(move |_| {
         let file_chooser = gtk::FileChooserNative::new(
@@ -693,6 +707,7 @@ pub fn show_edit_recipe_dialog(
         file_chooser.show();
     });
     image_section.append(&set_image_button);
+    image_section.append(&clear_image_button);
     form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     form_container.append(&image_section);
 
@@ -815,7 +830,17 @@ pub fn show_edit_recipe_dialog(
                     image_field = Some(new_filename);
                 }
             }
-
+            // Handle image clearing
+            if let Some(image_to_delete) = cleared_image.borrow().as_ref() {
+                // Remove image field
+                image_field = None;
+                // Delete the image file from data_dir/recipes/img/
+                if let Some(dm) = &data_manager_clone {
+                    let data_dir = dm.get_data_dir();
+                    let img_path = data_dir.join("recipes/img").join(image_to_delete);
+                    let _ = std::fs::remove_file(img_path);
+                }
+            }
             let new_recipe = cookbook_engine::Recipe {
                 title: new_title,
                 ingredients,
