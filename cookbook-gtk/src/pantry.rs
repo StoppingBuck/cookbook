@@ -75,20 +75,29 @@ pub fn rebuild_pantry_list<C>(
             pantry_list.append(&no_items_label);
         } else {
             for category in sorted_categories {
-                // Create category header
-                let category_frame = gtk::Frame::new(Some(&category));
-                category_frame.set_margin_bottom(DEFAULT_MARGIN);
+                // Category header as bold label
+                let category_label = gtk::Label::new(None);
+                category_label.set_markup(&format!("<b>{}</b>", category));
+                category_label.set_halign(gtk::Align::Start);
+                category_label.set_margin_top(DEFAULT_MARGIN);
+                category_label.set_margin_bottom(LIST_ROW_MARGIN);
+                pantry_list.append(&category_label);
 
-                let category_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
-                category_frame.set_child(Some(&category_box));
+                // ListBox for ingredients in this category
+                let listbox = gtk::ListBox::new();
+                listbox.set_selection_mode(gtk::SelectionMode::None);
+                listbox.set_hexpand(true);
 
                 if let Some(items) = pantry_items_by_category.get_mut(&category) {
                     // Sort ingredients alphabetically within category
                     items.sort_by(|a, b| a.0.cmp(&b.0));
 
                     for (name, quantity, quantity_type, is_in_stock) in items.iter() {
+                        let row = gtk::ListBoxRow::new();
+                        row.set_selectable(false);
                         let item_row = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
                         item_row.set_margin_all(LIST_ROW_MARGIN);
+                        item_row.add_css_class("pantry-item");
 
                         // Create the item label with quantity if available
                         let mut label_text = name.clone();
@@ -115,36 +124,15 @@ pub fn rebuild_pantry_list<C>(
                         item_label.set_hexpand(true);
                         item_row.append(&item_label);
 
-                        // Check if this ingredient has a KB entry
-                        let has_kb = if let Some(ref dm) = data_manager {
-                            if let Some(ingredient) = dm.get_ingredient(name) {
-                                if let Some(ref kb_slug) = ingredient.kb {
-                                    // Only show if the KB entry actually exists
-                                    dm.get_kb_entry(kb_slug).is_some()
-                                } else {
-                                    false
-                                }
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
-                        };
+                        // Optional: add chevron icon to indicate clickability
+                        let chevron = gtk::Image::from_icon_name("go-next-symbolic");
+                        chevron.set_pixel_size(16);
+                        chevron.set_valign(gtk::Align::Center);
+                        item_row.append(&chevron);
 
-                        if has_kb {
-                            let kb_icon = gtk::Image::from_icon_name("emblem-ok-symbolic"); // Use a book icon from your icon theme
-                            kb_icon.set_pixel_size(16);
-                            kb_icon.set_halign(gtk::Align::End);
-                            kb_icon.set_valign(gtk::Align::Center);
-                            kb_icon.set_hexpand(false);
-                            item_row.append(&kb_icon);
-                        }
-
-                        // Make the row selectable
+                        // Make the row clickable
                         let click_gesture = gtk::GestureClick::new();
-                        item_row.add_css_class("pantry-item");
                         item_row.add_controller(click_gesture.clone());
-
                         let sender_clone = sender.clone();
                         let name_clone = name.clone();
                         let select_msg_clone = select_ingredient_msg.clone();
@@ -152,11 +140,11 @@ pub fn rebuild_pantry_list<C>(
                             sender_clone.input(select_msg_clone(name_clone.clone()));
                         });
 
-                        category_box.append(&item_row);
+                        row.set_child(Some(&item_row));
+                        listbox.append(&row);
                     }
                 }
-
-                pantry_list.append(&category_frame);
+                pantry_list.append(&listbox);
             }
         }
     } else {

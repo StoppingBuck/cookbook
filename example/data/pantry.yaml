@@ -12,10 +12,6 @@ items:
   quantity: 1.0
   quantity_type: ''
   last_updated: 2025-05-17
-- ingredient: butter2
-  quantity: 2.0
-  quantity_type: ''
-  last_updated: 2025-05-17
 - ingredient: flour
   quantity: null
   quantity_type: ''
@@ -24,10 +20,6 @@ items:
   quantity: 1.0
   quantity_type: t
   last_updated: 2025-05-17
-- ingredient: pastas
-  quantity: null
-  quantity_type: ''
-  last_updated: 2025-05-17
 - ingredient: eggplant
   quantity: 2.0
   quantity_type: ''
@@ -35,8 +27,4 @@ items:
 - ingredient: pumpkin
   quantity: null
   quantity_type: ''
-  last_updated: 2025-05-17
-- ingredient: raspberry
-  quantity: 2.0
-  quantity_type: barrels
   last_updated: 2025-05-17
