@@ -5,9 +5,9 @@ items:
   quantity_type: kg
   last_updated: 2025-05-16
 - ingredient: tomato
-  quantity: null
-  quantity_type: ''
-  last_updated: 2025-05-10
+  quantity: 3.0
+  quantity_type: t
+  last_updated: 2025-05-17
 - ingredient: chicken breast
   quantity: 1.0
   quantity_type: ton

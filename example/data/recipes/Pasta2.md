@@ -1,5 +1,5 @@
 ---
-Title: 'I hope nobody ever checks the commit history, ; . - '
+Title: Pasta2
 Ingredients:
 - ingredient: chicken breast
   quantity: 2.0
