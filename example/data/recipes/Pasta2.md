@@ -16,5 +16,6 @@ Servings: 2
 Tags:
 - dinner
 - meat
+image: null
 ---
 Cook chicken and onion in olive oil until golden and cooked through.

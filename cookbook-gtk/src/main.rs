@@ -367,6 +367,47 @@ impl SimpleComponent for AppModel {
                     }
                 }
             }
+            // Message: User clicks the Add Recipe button
+            AppMsg::AddRecipe => {
+                recipes::show_add_recipe_dialog(
+                    self.data_manager.clone(),
+                    sender.clone(),
+                );
+            }
+            // Message: User clicks the Delete Recipe button
+            AppMsg::DeleteRecipe(recipe_title) => {
+                if let Some(ref data_manager) = self.data_manager {
+                    let data_dir = data_manager.get_data_dir();
+                    let recipes_dir = data_dir.join("recipes");
+                    let file_name = format!("{}.md", recipe_title.replace(" ", "_"));
+                    let recipe_path = recipes_dir.join(&file_name);
+                    let result = std::fs::remove_file(&recipe_path);
+                    match result {
+                        Ok(_) => {
+                            self.selected_recipe = None;
+                            sender.input(AppMsg::ReloadRecipes);
+                        }
+                        Err(err) => {
+                            let error_message = format!("Failed to delete recipe: {}", err);
+                            self.error_message = Some(error_message);
+                        }
+                    }
+                }
+            }
+            // Message: Explicitly reload recipes data and UI
+            AppMsg::ReloadRecipes => {
+                if let Some(ref data_manager) = self.data_manager {
+                    match cookbook_engine::DataManager::new(data_manager.get_data_dir()) {
+                        Ok(updated_manager) => {
+                            self.data_manager = Some(Rc::new(updated_manager));
+                        }
+                        Err(err) => {
+                            let error_message = format!("Failed to reload recipes: {}", err);
+                            self.error_message = Some(error_message);
+                        }
+                    }
+                }
+            }
             // Message: Explicitly reload pantry data and UI
             AppMsg::ReloadPantry => {
                 if let Some(ref data_manager) = self.data_manager {
@@ -376,6 +417,26 @@ impl SimpleComponent for AppModel {
                         }
                         Err(err) => {
                             let error_message = format!("Failed to reload pantry: {}", err);
+                            self.error_message = Some(error_message);
+                        }
+                    }
+                }
+            }
+            // Message: User creates a new recipe
+            AppMsg::CreateRecipe(new_recipe) => {
+                if let Some(ref data_manager) = self.data_manager {
+                    let data_dir = data_manager.get_data_dir();
+                    let recipes_dir = data_dir.join("recipes");
+                    let file_name = format!("{}.md", new_recipe.title.replace(" ", "_"));
+                    let recipe_path = recipes_dir.join(&file_name);
+                    // Write the new recipe to file
+                    match new_recipe.to_file(&recipe_path) {
+                        Ok(_) => {
+                            sender.input(AppMsg::ReloadRecipes);
+                            self.selected_recipe = Some(new_recipe.title.clone());
+                        }
+                        Err(err) => {
+                            let error_message = format!("Failed to create recipe: {}", err);
                             self.error_message = Some(error_message);
                         }
                     }
@@ -537,6 +598,11 @@ impl SimpleComponent for AppModel {
             &sender,
             AppMsg::SelectRecipe,
         );
+
+        // Update recipes list and details when ReloadRecipes is triggered
+        if self.current_tab == Tab::Recipes {
+            recipes::refresh_recipes_ui(self, widgets, &sender);
+        }
 
         if let Some(ref msg) = self.error_message {
             dialogs::show_error_dialog(&widgets.window, msg);

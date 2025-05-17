@@ -186,6 +186,19 @@ where
         });
         header_box.append(&edit_button);
 
+        // Delete button
+        let delete_button = gtk::Button::with_label("Delete");
+        delete_button.add_css_class("destructive-action");
+        let sender_clone = sender.clone();
+        let recipe_title = recipe.title.clone();
+        delete_button.connect_clicked(move |_| {
+            // Only send if C::Input == AppMsg
+            if let Some(appmsg_sender) = (&sender_clone as &dyn std::any::Any).downcast_ref::<ComponentSender<AppModel>>() {
+                appmsg_sender.input(AppMsg::DeleteRecipe(recipe_title.clone()));
+            }
+        });
+        header_box.append(&delete_button);
+
         recipe_box.append(&header_box);
 
         // Recipe tags
@@ -387,6 +400,28 @@ pub fn update_recipe_details<C>(
         select_label.set_valign(gtk::Align::Center);
         recipes_details.append(&select_label);
     }
+}
+
+/// Refreshes the recipes list and details view (for ReloadRecipes)
+pub fn refresh_recipes_ui(
+    model: &AppModel,
+    widgets: &mut crate::types::AppWidgets,
+    sender: &ComponentSender<AppModel>,
+) {
+    update_recipes_list(
+        &widgets.recipes_list_box,
+        &model.data_manager,
+        &model.search_text,
+        sender,
+        AppMsg::SelectRecipe,
+    );
+    update_recipe_details(
+        model.selected_recipe.as_deref(),
+        &widgets.recipes_details,
+        &model.data_manager,
+        sender,
+        AppMsg::EditRecipe,
+    );
 }
 
 /// Show the Edit Recipe dialog and handle updating the recipe.
@@ -750,6 +785,9 @@ pub fn show_edit_recipe_dialog(
     let data_manager_clone = data_manager.clone();
     let ingredients_container_ref = ingredients_container.clone();
 
+    // Determine if this is an add or update dialog
+    let is_add = recipe_title.is_empty();
+
     dialog.add_button("Cancel", gtk::ResponseType::Cancel);
     dialog.add_button("Save", gtk::ResponseType::Accept);
 
@@ -853,10 +891,13 @@ pub fn show_edit_recipe_dialog(
             };
 
             if let Some(_rc_dm) = &data_manager_clone {
-                let original_title = recipe_title_clone.clone();
-                let recipe_clone = new_recipe.clone();
                 let sender_clone2 = sender_clone.clone();
-                sender_clone2.input(AppMsg::UpdateRecipe(original_title, recipe_clone));
+                if is_add {
+                    sender_clone2.input(AppMsg::CreateRecipe(new_recipe.clone()));
+                } else {
+                    let original_title = recipe_title_clone.clone();
+                    sender_clone2.input(AppMsg::UpdateRecipe(original_title, new_recipe.clone()));
+                }
 
                 match Result::<bool, cookbook_engine::CookbookError>::Ok(true) {
                     Ok(_) => {
@@ -884,6 +925,24 @@ pub fn show_edit_recipe_dialog(
     });
 
     dialog.show();
+}
+
+/// Show the Add Recipe dialog with a blank recipe.
+pub fn show_add_recipe_dialog(
+    data_manager: Option<Rc<cookbook_engine::DataManager>>,
+    sender: ComponentSender<crate::types::AppModel>,
+) {
+    let blank_recipe = cookbook_engine::Recipe {
+        title: String::new(),
+        ingredients: Vec::new(),
+        prep_time: None,
+        downtime: None,
+        servings: None,
+        tags: Some(Vec::new()),
+        image: None,
+        instructions: String::new(),
+    };
+    show_edit_recipe_dialog(&blank_recipe, data_manager, sender, String::new());
 }
 
 /// Builds the Recipes tab UI and returns the main container, list box, and details box.
@@ -914,8 +973,17 @@ pub fn build_recipes_tab(
         sender_clone.input(AppMsg::SearchTextChanged(entry.text().to_string()));
     });
 
+    // Add Recipe button
+    let add_recipe_button = gtk::Button::with_label("Add Recipe");
+    add_recipe_button.add_css_class("suggested-action");
+    let sender_clone = sender.clone();
+    add_recipe_button.connect_clicked(move |_| {
+        sender_clone.input(AppMsg::AddRecipe);
+    });
+
     recipes_header.append(&recipes_title);
     recipes_header.append(&search_entry);
+    recipes_header.append(&add_recipe_button);
     recipes_container.append(&recipes_header);
 
     // Split view: list (left), details (right)

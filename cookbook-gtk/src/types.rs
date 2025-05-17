@@ -38,6 +38,10 @@ pub enum AppMsg {
     ClearError,
     AddIngredient, // Triggers the add ingredient dialog
     ReloadPantry, // Explicitly reload pantry data and UI
+    AddRecipe, // Triggers the add recipe dialog
+    DeleteRecipe(String), // Deletes a recipe by title
+    ReloadRecipes, // Explicitly reload recipes data and UI
+    CreateRecipe(cookbook_engine::Recipe), // Add a new recipe
 }
 
 /// The main application model representing the application state

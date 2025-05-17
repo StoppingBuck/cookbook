@@ -16,5 +16,6 @@ Servings: 2
 Tags:
 - dinner
 - quick
+image: Simple_Pasta.jpg
 ---
 Boil pasta. Sauté garlic in olive oil. Combine with pasta and serve.
