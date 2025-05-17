@@ -143,98 +143,7 @@ impl SimpleComponent for AppModel {
         ) = pantry::build_pantry_tab(&model, &sender);
 
         // Knowledge base tab content
-        let kb_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
-
-        let kb_title = gtk::Label::new(Some("Knowledge Base"));
-        kb_title.set_markup("<span size='x-large' weight='bold'>Knowledge Base</span>");
-        kb_title.set_halign(gtk::Align::Start);
-        kb_title.set_margin_all(10);
-
-        kb_container.append(&kb_title);
-
-        // Split view for Knowledge Base (list on left, details on right)
-        let kb_content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        kb_content.set_hexpand(true);
-        kb_content.set_vexpand(true);
-
-        // Knowledge Base list (left side)
-        let kb_list_scroll = gtk::ScrolledWindow::new();
-        kb_list_scroll.set_hexpand(false);
-        kb_list_scroll.set_vexpand(true);
-        kb_list_scroll.set_min_content_width(250);
-
-        let kb_list_box = gtk::ListBox::new();
-        kb_list_box.set_selection_mode(gtk::SelectionMode::Single);
-
-        // Add KB entries to list if available
-        if let Some(ref dm) = model.data_manager {
-            let entries = dm.get_all_kb_entries();
-            if !entries.is_empty() {
-                // Sort entries by title for better usability
-                let mut sorted_entries = entries.clone();
-                sorted_entries.sort_by(|a, b| a.title.cmp(&b.title));
-
-                for entry in sorted_entries {
-                    let row = gtk::ListBoxRow::new();
-                    let title_label = gtk::Label::new(Some(&entry.title));
-                    title_label.set_halign(gtk::Align::Start);
-                    title_label.set_margin_start(5);
-                    title_label.set_margin_end(5);
-                    title_label.set_margin_top(5);
-                    title_label.set_margin_bottom(5);
-                    row.set_child(Some(&title_label));
-
-                    kb_list_box.append(&row);
-                }
-            } else {
-                let no_entries_row = gtk::ListBoxRow::new();
-                let no_entries_label = gtk::Label::new(Some("No KB entries available"));
-                no_entries_label.set_margin_all(10);
-                no_entries_row.set_child(Some(&no_entries_label));
-                kb_list_box.append(&no_entries_row);
-            }
-        } else {
-            let no_data_row = gtk::ListBoxRow::new();
-            let no_data_label = gtk::Label::new(Some("Failed to load KB data"));
-            no_data_label.set_margin_all(10);
-            no_data_row.set_child(Some(&no_data_label));
-            kb_list_box.append(&no_data_row);
-        }
-
-        // KB entry selection handler
-        let sender_clone = sender.clone();
-        let dm_clone = model.data_manager.clone();
-        kb_list_box.connect_row_selected(move |_list, row_opt| {
-            if let Some(row) = row_opt {
-                if let Some(ref dm) = dm_clone {
-                    let entries = dm.get_all_kb_entries();
-                    if row.index() >= 0 && (row.index() as usize) < entries.len() {
-                        let entry = &entries[row.index() as usize];
-                        sender_clone.input(AppMsg::SelectKnowledgeBaseEntry(entry.slug.clone()));
-                    }
-                }
-            }
-        });
-
-        kb_list_scroll.set_child(Some(&kb_list_box));
-
-        // KB details view (right side)
-        let kb_details = gtk::Box::new(gtk::Orientation::Vertical, 10);
-        kb_details.set_hexpand(true);
-        kb_details.set_vexpand(true);
-
-        let kb_label = gtk::Label::new(Some("Select an item to view details"));
-        kb_label.set_halign(gtk::Align::Center);
-        kb_label.set_valign(gtk::Align::Center);
-        kb_label.set_hexpand(true);
-        kb_label.set_vexpand(true);
-
-        kb_details.append(&kb_label);
-
-        kb_content.append(&kb_list_scroll);
-        kb_content.append(&kb_details);
-
-        kb_container.append(&kb_content);
+        let (kb_container, kb_list_box, kb_details, kb_label) = kb::build_kb_tab(&model, &sender);
 
         // Settings tab content
         let settings_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
@@ -572,19 +481,14 @@ impl SimpleComponent for AppModel {
         // Update KB entry details if a KB entry is selected
         if self.current_tab == Tab::KnowledgeBase {
             // Select the correct KB entry in the list box
-            if let Some(kb_slug) = &self.selected_kb_entry {
-                // Update the selection in the list
-                kb::select_kb_entry_in_list(&widgets.kb_list_box, kb_slug);
-
-                // Update the details view
-                kb::update_kb_details::<Self>(
+            if let Some(slug) = &self.selected_kb_entry {
+                kb::update_kb_details::<AppModel>(
                     &widgets.kb_details,
                     &self.data_manager,
-                    kb_slug,
+                    slug,
                     &self.data_dir,
                 );
             } else {
-                // No KB entry selected, show placeholder
                 kb::show_kb_details_placeholder(&widgets.kb_details);
             }
 

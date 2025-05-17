@@ -6,6 +6,9 @@ use relm4::RelmWidgetExt;
 use std::path::Path;
 use std::rc::Rc;
 
+use crate::types::AppModel;
+use crate::types::AppMsg;
+
 /// Updates the KB entry list based on search text and other filters
 pub fn update_kb_list<C>(
     kb_list_box: &gtk::ListBox,
@@ -38,11 +41,11 @@ pub fn update_kb_list<C>(
                 row.set_child(Some(&title_label));
 
                 kb_list_box.append(&row);
-                
+
                 // Store the slug in the row's data to make retrieval easier
                 row.set_widget_name(&entry.slug);
             }
-            
+
             // Set up row selection handler
             let sender_clone = sender.clone();
             let select_msg = select_kb_entry_msg.clone();
@@ -122,17 +125,17 @@ pub fn build_kb_detail_view(
             related_label.set_margin_top(5);
             related_label.set_margin_bottom(5);
             details_container.append(&related_label);
-            
+
             let ingredients_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
             ingredients_box.set_margin_start(10);
             ingredients_box.set_margin_bottom(10);
-            
+
             for ingredient in related_ingredients {
                 let ingredient_chip = gtk::Button::with_label(&ingredient.name);
                 ingredient_chip.add_css_class("tag");
                 ingredients_box.append(&ingredient_chip);
             }
-            
+
             details_container.append(&ingredients_box);
             details_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         }
@@ -149,14 +152,14 @@ pub fn build_kb_detail_view(
     } else {
         // KB entry not found
         let not_found_label = gtk::Label::new(Some(&format!(
-            "Knowledge Base entry '{}' not found", 
+            "Knowledge Base entry '{}' not found",
             kb_slug
         )));
         not_found_label.set_halign(gtk::Align::Center);
         not_found_label.set_valign(gtk::Align::Center);
         kb_details_scroll.set_child(Some(&not_found_label));
     }
-    
+
     kb_details_scroll
 }
 
@@ -179,9 +182,8 @@ pub fn update_kb_details<C>(
         kb_details.append(&kb_details_scroll);
     } else {
         // Data manager not available
-        let error_label = gtk::Label::new(Some(
-            "Unable to load KB entry: data manager not available",
-        ));
+        let error_label =
+            gtk::Label::new(Some("Unable to load KB entry: data manager not available"));
         error_label.set_halign(gtk::Align::Center);
         error_label.set_valign(gtk::Align::Center);
         kb_details.append(&error_label);
@@ -212,7 +214,7 @@ pub fn select_kb_entry_in_list(kb_list_box: &gtk::ListBox, kb_slug: &str) {
             return;
         }
     }
-    
+
     // If that fails, try with the label text (backward compatibility)
     i = 0;
     while let Some(row) = kb_list_box.row_at_index(i) {
@@ -226,4 +228,98 @@ pub fn select_kb_entry_in_list(kb_list_box: &gtk::ListBox, kb_slug: &str) {
             }
         }
     }
+}
+
+pub fn build_kb_tab(
+    model: &AppModel,
+    sender: &ComponentSender<AppModel>,
+) -> (gtk::Box, gtk::ListBox, gtk::Box, gtk::Label) {
+    // Main container
+    let kb_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
+
+    // Title
+    let kb_title = gtk::Label::new(Some("Knowledge Base"));
+    kb_title.set_markup("<span size='x-large' weight='bold'>Knowledge Base</span>");
+    kb_title.set_halign(gtk::Align::Start);
+    kb_title.set_margin_all(10);
+    kb_container.append(&kb_title);
+
+    // Split view
+    let kb_content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    kb_content.set_hexpand(true);
+    kb_content.set_vexpand(true);
+
+    // List
+    let kb_list_scroll = gtk::ScrolledWindow::new();
+    kb_list_scroll.set_hexpand(false);
+    kb_list_scroll.set_vexpand(true);
+    kb_list_scroll.set_min_content_width(250);
+
+    let kb_list_box = gtk::ListBox::new();
+    kb_list_box.set_selection_mode(gtk::SelectionMode::Single);
+
+    // Populate list
+    if let Some(ref dm) = model.data_manager {
+        let entries = dm.get_all_kb_entries();
+        if !entries.is_empty() {
+            let mut sorted_entries = entries.clone();
+            sorted_entries.sort_by(|a, b| a.title.cmp(&b.title));
+            for entry in sorted_entries {
+                let row = gtk::ListBoxRow::new();
+                let title_label = gtk::Label::new(Some(&entry.title));
+                title_label.set_halign(gtk::Align::Start);
+                title_label.set_margin_start(5);
+                title_label.set_margin_end(5);
+                title_label.set_margin_top(5);
+                title_label.set_margin_bottom(5);
+                row.set_child(Some(&title_label));
+                // Store the slug in the row's widget name for retrieval
+                row.set_widget_name(&entry.slug);
+                kb_list_box.append(&row);
+            }
+
+            // Add this after populating the list:
+            let sender_clone = sender.clone();
+            kb_list_box.connect_row_selected(move |_, row_opt| {
+                if let Some(row) = row_opt {
+                    let slug = row.widget_name().to_string();
+                    sender_clone.input(AppMsg::SelectKnowledgeBaseEntry(slug));
+                }
+            });
+        } else {
+            let no_entries_row = gtk::ListBoxRow::new();
+            let no_entries_label = gtk::Label::new(Some("No KB entries available"));
+            no_entries_label.set_margin_all(10);
+            no_entries_row.set_child(Some(&no_entries_label));
+            kb_list_box.append(&no_entries_row);
+        }
+    } else {
+        let no_data_row = gtk::ListBoxRow::new();
+        let no_data_label = gtk::Label::new(Some("Failed to load KB data"));
+        no_data_label.set_margin_all(10);
+        no_data_row.set_child(Some(&no_data_label));
+        kb_list_box.append(&no_data_row);
+    }
+
+    kb_list_scroll.set_child(Some(&kb_list_box));
+
+    // Details
+    let kb_details = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    kb_details.set_hexpand(true);
+    kb_details.set_vexpand(true);
+
+    let kb_label = gtk::Label::new(Some("Select an item to view details"));
+    kb_label.set_halign(gtk::Align::Center);
+    kb_label.set_valign(gtk::Align::Center);
+    kb_label.set_hexpand(true);
+    kb_label.set_vexpand(true);
+
+    kb_details.append(&kb_label);
+
+    kb_content.append(&kb_list_scroll);
+    kb_content.append(&kb_details);
+
+    kb_container.append(&kb_content);
+
+    (kb_container, kb_list_box, kb_details, kb_label)
 }
