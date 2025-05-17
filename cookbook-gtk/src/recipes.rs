@@ -648,19 +648,6 @@ pub fn show_edit_recipe_dialog(
         ingredients_container_ref.append(&row);
     });
 
-    // Instructions section
-    let instructions_label = gtk::Label::new(Some("Instructions"));
-    instructions_label.set_markup("<span weight='bold'>Instructions</span>");
-    instructions_label.set_halign(gtk::Align::Start);
-    form_container.append(&instructions_label);
-
-    let instructions_text_view = gtk::TextView::new();
-    instructions_text_view.set_wrap_mode(gtk::WrapMode::Word);
-    instructions_text_view.set_vexpand(true);
-    instructions_text_view.set_hexpand(true);
-    instructions_text_view.buffer().set_text(&recipe.instructions);
-    form_container.append(&instructions_text_view);
-
     // Image section
     let image_section = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     let image_preview = if let Some(image_name) = &recipe.image {
@@ -709,6 +696,17 @@ pub fn show_edit_recipe_dialog(
     form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     form_container.append(&image_section);
 
+    // Instructions section (create before closure so it's in scope)
+    let instructions_label = gtk::Label::new(Some("Instructions"));
+    instructions_label.set_markup("<span weight='bold'>Instructions</span>");
+    instructions_label.set_halign(gtk::Align::Start);
+    let instructions_text_view = gtk::TextView::new();
+    instructions_text_view.set_wrap_mode(gtk::WrapMode::Word);
+    instructions_text_view.set_hexpand(true);
+    instructions_text_view.set_vexpand(false);
+    instructions_text_view.set_height_request(120);
+    instructions_text_view.buffer().set_text(&recipe.instructions);
+
     // Append all field widgets to form_container in the correct order
     form_container.append(&title_box);
     form_container.append(&prep_time_box);
@@ -720,10 +718,11 @@ pub fn show_edit_recipe_dialog(
     form_container.append(&ingredients_container);
     form_container.append(&add_ingredient_button);
     form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-    form_container.append(&image_section); // Move image section before instructions
+    form_container.append(&image_section);
     form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     form_container.append(&instructions_label);
     form_container.append(&instructions_text_view);
+    form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
 
     scrolled_window.set_child(Some(&form_container));
     content_area.append(&scrolled_window);
@@ -798,11 +797,7 @@ pub fn show_edit_recipe_dialog(
 
             let instructions = instructions_text_view
                 .buffer()
-                .text(
-                    &instructions_text_view.buffer().start_iter(),
-                    &instructions_text_view.buffer().end_iter(),
-                    false,
-                )
+                .text(&instructions_text_view.buffer().start_iter(), &instructions_text_view.buffer().end_iter(), false)
                 .to_string();
 
             // Handle image copy if a new image was selected
