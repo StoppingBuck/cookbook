@@ -20,3 +20,7 @@ items:
   quantity: 2.0
   quantity_type: ''
   last_updated: 2025-05-14
+- ingredient: cheeese
+  quantity: 1.0
+  quantity_type: t
+  last_updated: 2025-05-17
