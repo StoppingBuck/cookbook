@@ -5,7 +5,7 @@ Ingredients:
   quantity: 500.0
   quantity_type: g
 - ingredient: milk
-  quantity: 100.0
+  quantity: 103.0
   quantity_type: ml
 - ingredient: butter
   quantity: 50.0

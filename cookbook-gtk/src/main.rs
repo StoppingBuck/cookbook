@@ -30,6 +30,7 @@ use std::rc::Rc; // Import Rc for reference counting // Import extension traits 
 // Define the dialogs module
 mod dialogs;
 mod pantry;
+mod recipes;
 
 // The main application model, representing the state of the app (e.g., current tab, selected recipe)
 #[allow(dead_code)]
@@ -1698,169 +1699,16 @@ impl SimpleComponent for AppModel {
                 while let Some(child) = widgets.recipes_details.first_child() {
                     widgets.recipes_details.remove(&child);
                 }
-
+            
                 // Find the selected recipe in the data manager
                 if let Some(ref dm) = self.data_manager {
-                    if let Some(recipe) = dm.get_recipe(recipe_name) {
-                        // Create new widgets to display recipe details
-                        let recipe_details_scroll = gtk::ScrolledWindow::new();
-                        recipe_details_scroll.set_hexpand(true);
-                        recipe_details_scroll.set_vexpand(true);
-
-                        let details_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
-                        details_container.set_margin_all(10);
-
-                        // Title with Edit button in a horizontal box
-                        let title_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-                        title_box.set_margin_bottom(10);
-
-                        // Check if all ingredients for this recipe are in the pantry
-                        let all_ingredients_in_stock =
-                            dm.are_all_ingredients_in_pantry(&recipe.title);
-                        let title_text = if all_ingredients_in_stock {
-                            format!(
-                                "<span size='x-large' weight='bold'>{} ✅</span>",
-                                recipe.title
-                            )
-                        } else {
-                            format!("<span size='x-large' weight='bold'>{}</span>", recipe.title)
-                        };
-
-                        let title = gtk::Label::new(None);
-                        title.set_markup(&title_text);
-                        title.set_halign(gtk::Align::Start);
-                        title.set_hexpand(true);
-                        title_box.append(&title);
-
-                        // Add Edit button
-                        let edit_button = gtk::Button::with_label("Edit");
-                        edit_button.add_css_class("suggested-action");
-                        let sender_clone = sender.clone();
-                        let recipe_title = recipe.title.clone();
-                        edit_button.connect_clicked(move |_| {
-                            sender_clone.input(AppMsg::EditRecipe(recipe_title.clone()));
-                        });
-                        title_box.append(&edit_button);
-
-                        details_container.append(&title_box);
-
-                        // Metadata section
-                        let metadata_box = gtk::Box::new(gtk::Orientation::Horizontal, 15);
-                        metadata_box.set_margin_bottom(10);
-
-                        // Preparation time
-                        let prep_time = gtk::Label::new(None);
-                        prep_time.set_markup(&format!(
-                            "<b>Prep:</b> {} min",
-                            recipe.prep_time.unwrap_or(0)
-                        ));
-                        prep_time.set_halign(gtk::Align::Start);
-
-                        // Cooking/downtime
-                        let cook_time = gtk::Label::new(None);
-                        cook_time.set_markup(&format!(
-                            "<b>Cook:</b> {} min",
-                            recipe.downtime.unwrap_or(0)
-                        ));
-                        cook_time.set_halign(gtk::Align::Start);
-
-                        // Servings
-                        let servings = gtk::Label::new(None);
-                        servings.set_markup(&format!(
-                            "<b>Servings:</b> {}",
-                            recipe.servings.unwrap_or(0)
-                        ));
-                        servings.set_halign(gtk::Align::Start);
-
-                        metadata_box.append(&prep_time);
-                        metadata_box.append(&cook_time);
-                        metadata_box.append(&servings);
-
-                        details_container.append(&metadata_box);
-
-                        // Tags
-                        if let Some(tags) = &recipe.tags {
-                            if !tags.is_empty() {
-                                let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-                                tags_box.set_margin_bottom(10);
-
-                                let tags_label = gtk::Label::new(Some("Tags:"));
-                                tags_label.set_halign(gtk::Align::Start);
-                                tags_box.append(&tags_label);
-
-                                for tag in tags {
-                                    let tag_button = gtk::Button::with_label(tag);
-                                    tag_button.add_css_class("tag");
-                                    tags_box.append(&tag_button);
-                                }
-
-                                details_container.append(&tags_box);
-                            }
-                        }
-
-                        // Separator
-                        let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
-                        separator.set_margin_top(5);
-                        separator.set_margin_bottom(15);
-                        details_container.append(&separator);
-
-                        // Ingredients section
-                        let ingredients_label = gtk::Label::new(None);
-                        ingredients_label
-                            .set_markup("<span size='large' weight='bold'>Ingredients</span>");
-                        ingredients_label.set_halign(gtk::Align::Start);
-                        ingredients_label.set_margin_bottom(5);
-                        details_container.append(&ingredients_label);
-
-                        let ingredients_list = gtk::Box::new(gtk::Orientation::Vertical, 5);
-                        ingredients_list.set_margin_start(10);
-                        ingredients_list.set_margin_bottom(15);
-
-                        for ingredient in &recipe.ingredients {
-                            let ingredient_label = gtk::Label::new(None);
-
-                            let quantity_text =
-                                match (&ingredient.quantity, &ingredient.quantity_type) {
-                                    (Some(q), Some(t)) => format!("{} {} ", q, t),
-                                    (Some(q), None) => format!("{} ", q),
-                                    (_, _) => String::new(),
-                                };
-
-                            ingredient_label.set_markup(&format!(
-                                "• {}{}",
-                                quantity_text, ingredient.ingredient
-                            ));
-                            ingredient_label.set_halign(gtk::Align::Start);
-                            ingredients_list.append(&ingredient_label);
-                        }
-
-                        details_container.append(&ingredients_list);
-
-                        // Instructions section
-                        let instructions_label = gtk::Label::new(None);
-                        instructions_label
-                            .set_markup("<span size='large' weight='bold'>Instructions</span>");
-                        instructions_label.set_halign(gtk::Align::Start);
-                        instructions_label.set_margin_bottom(5);
-                        details_container.append(&instructions_label);
-
-                        let instructions_text = gtk::Label::new(Some(&recipe.instructions));
-                        instructions_text.set_halign(gtk::Align::Start);
-                        instructions_text.set_wrap(true);
-                        instructions_text.set_xalign(0.0);
-                        instructions_text.set_margin_start(10);
-                        details_container.append(&instructions_text);
-
-                        recipe_details_scroll.set_child(Some(&details_container));
-                        widgets.recipes_details.append(&recipe_details_scroll);
-                    } else {
-                        // Recipe not found
-                        let not_found_label =
-                            gtk::Label::new(Some(&format!("Recipe '{}' not found", recipe_name)));
-                        not_found_label.set_halign(gtk::Align::Center);
-                        not_found_label.set_valign(gtk::Align::Center);
-                        widgets.recipes_details.append(&not_found_label);
-                    }
+                    let recipe_details_scroll = recipes::build_recipe_detail_view(
+                        dm,
+                        recipe_name,
+                        &sender,
+                        AppMsg::EditRecipe,
+                    );
+                    widgets.recipes_details.append(&recipe_details_scroll);
                 } else {
                     // Data manager not available
                     let error_label =
@@ -1874,12 +1722,12 @@ impl SimpleComponent for AppModel {
                 let select_label = gtk::Label::new(Some("Select a recipe to view details"));
                 select_label.set_halign(gtk::Align::Center);
                 select_label.set_valign(gtk::Align::Center);
-
+            
                 // Clear previous content
                 while let Some(child) = widgets.recipes_details.first_child() {
                     widgets.recipes_details.remove(&child);
                 }
-
+            
                 widgets.recipes_details.append(&select_label);
             }
         }
@@ -2014,71 +1862,13 @@ impl SimpleComponent for AppModel {
         }
 
         // Update recipes list when search text changes
-        if self.current_tab == Tab::Recipes && self.selected_recipe.is_none() {
-            // Only update recipe list if no recipe is currently selected
-            // This prevents conflicts between selection and filtering
-
-            // Clear the recipes list
-            while let Some(child) = widgets.recipes_list_box.first_child() {
-                widgets.recipes_list_box.remove(&child);
-            }
-
-            if let Some(ref dm) = self.data_manager {
-                // Use engine method to search recipes
-                let filtered_recipes = dm.search_recipes(&self.search_text);
-
-                if !filtered_recipes.is_empty() {
-                    for recipe in filtered_recipes {
-                        let row = gtk::ListBoxRow::new();
-
-                        // Create a container for the recipe entry to include both label and potentially a checkmark
-                        let item_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-
-                        // Check if all ingredients for this recipe are in the pantry
-                        let all_ingredients_in_stock =
-                            dm.are_all_ingredients_in_pantry(&recipe.title);
-
-                        // Create the title label, potentially with a checkmark
-                        let title_text = if all_ingredients_in_stock {
-                            format!("{} ✅", recipe.title)
-                        } else {
-                            recipe.title.clone()
-                        };
-
-                        let title_label = gtk::Label::new(Some(&title_text));
-                        title_label.set_halign(gtk::Align::Start);
-                        title_label.set_margin_start(5);
-                        title_label.set_margin_end(5);
-                        title_label.set_margin_top(5);
-                        title_label.set_margin_bottom(5);
-                        title_label.set_hexpand(true);
-
-                        item_box.append(&title_label);
-                        row.set_child(Some(&item_box));
-
-                        widgets.recipes_list_box.append(&row);
-                    }
-                } else {
-                    // No recipes match the search
-                    let no_recipes_row = gtk::ListBoxRow::new();
-                    let no_recipes_label = if self.search_text.is_empty() {
-                        gtk::Label::new(Some("No recipes available"))
-                    } else {
-                        gtk::Label::new(Some(&format!("No recipes match '{}'", self.search_text)))
-                    };
-                    no_recipes_label.set_margin_all(10);
-                    no_recipes_row.set_child(Some(&no_recipes_label));
-                    widgets.recipes_list_box.append(&no_recipes_row);
-                }
-            } else {
-                // Data manager not available
-                let no_data_row = gtk::ListBoxRow::new();
-                let no_data_label = gtk::Label::new(Some("Failed to load recipe data"));
-                no_data_label.set_margin_all(10);
-                no_data_row.set_child(Some(&no_data_label));
-                widgets.recipes_list_box.append(&no_data_row);
-            }
-        }
+        recipes::update_recipes_list(
+            &widgets.recipes_list_box,
+            &self.data_manager,
+            &self.search_text,
+            &sender,
+            AppMsg::SelectRecipe,
+        );
     } // == UPDATE_VIEW ENDS HERE ==
 }
 //
