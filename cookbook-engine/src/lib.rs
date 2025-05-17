@@ -423,24 +423,20 @@ impl DataManager {
     /// The values of the HashMap should be the KnowledgeBaseEntry struct
     /// The KnowledgeBaseEntry struct should include the slug, title, image, and content fields
     fn load_kb_entries(&mut self) -> Result<(), CookbookError> {
-        // Path to the kb directory
-        let kb_dir = self.data_dir.join("kb");
+        // Path to the canonical KB directory in the engine crate
+        let kb_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/kb");
         if !kb_dir.exists() {
             return Err(CookbookError::DataDirError(format!("Knowledge Base directory not found: {:?}", kb_dir)));
         }
-        
+
         // Read the contents of the kb directory
-        let entries = fs::read_dir(&kb_dir)
+        let entries = std::fs::read_dir(&kb_dir)
             .map_err(|e| CookbookError::ListDirError(e.to_string()))?;
-        
+
         // Iterate through each entry in the directory
         for entry in entries {
-            // Get the path of the entry
             let entry = entry.map_err(|e| CookbookError::ListDirError(e.to_string()))?;
             let path = entry.path();
-            
-            // Check if the entry is a file and has a .md extension
-            // If it is, load the knowledge base entry from the file
             if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("md") {
                 match KnowledgeBaseEntry::from_file(&path) {
                     Ok(kb_entry) => {
@@ -450,8 +446,7 @@ impl DataManager {
                 }
             }
         }
-        
-        Ok(()) // Return Ok if all knowledge base entries are loaded successfully
+        Ok(())
     }
     
     /// Returns all ingredients as a vector of references
@@ -919,5 +914,17 @@ impl DataManager {
             .collect::<Vec<String>>();
         categories.sort();
         categories
+    }
+    
+    /// Returns the path to a KB image in the engine's canonical KB directory.
+    pub fn get_kb_image_path(&self, image_name: &str) -> Option<std::path::PathBuf> {
+        // The canonical KB directory is at cookbook-engine/src/kb/
+        let kb_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/kb");
+        let image_path = kb_dir.join(image_name);
+        if image_path.exists() {
+            Some(image_path)
+        } else {
+            None
+        }
     }
 }

@@ -99,17 +99,21 @@ pub fn build_kb_detail_view(
 
         // Image (if available)
         if let Some(image_name) = &kb_entry.image {
-            // Construct path to image file in the data directory's kb folder
-            let image_path = data_dir.join("kb").join(image_name);
-            if image_path.exists() {
-                let image = gtk::Image::from_file(&image_path);
-                image.set_halign(gtk::Align::Center);
-                image.set_margin_bottom(HEADER_MARGIN);
-                details_container.append(&image);
+            // Use the engine's KB image path provider instead of data_dir
+            if let Some(image_path) = data_manager.get_kb_image_path(image_name) {
+                if image_path.exists() {
+                    let image = gtk::Image::from_file(&image_path);
+                    image.set_halign(gtk::Align::Center);
+                    image.set_margin_bottom(HEADER_MARGIN);
+                    details_container.append(&image);
+                } else {
+                    eprintln!("Image not found: {:?}", image_path);
+                    let missing_label = gtk::Label::new(Some("Image not available"));
+                    missing_label.set_halign(gtk::Align::Center);
+                    missing_label.set_margin_bottom(HEADER_MARGIN);
+                    details_container.append(&missing_label);
+                }
             } else {
-                eprintln!("Image not found: {:?}", image_path);
-
-                // Add a placeholder for missing image
                 let missing_label = gtk::Label::new(Some("Image not available"));
                 missing_label.set_halign(gtk::Align::Center);
                 missing_label.set_margin_bottom(HEADER_MARGIN);

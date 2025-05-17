@@ -6,6 +6,7 @@
 - An icon for the window (X is currently givin' it to ya)
 - Help docs
 - About + license (MIT engine, GPL app)
+- Dropdown ingredient auto-suggest for name_field in 'Edit Recipe' window should trigger immediately
 - Settings
-  - Like what?
+  - data_dir location / validation
 - Translations! All ingredients should be language-agnostic (how?)
