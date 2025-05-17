@@ -18,3 +18,4 @@ Tags:
 - vegetarian
 ---
 Boil potatoes. Mash with milk and butter until smooth.
+Get a nervous breakdown.

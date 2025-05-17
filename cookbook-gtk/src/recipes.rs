@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use crate::types::AppModel;
 use crate::types::AppMsg;
+use crate::utils;
 
 /// Updates the recipes list based on search text and other filters
 pub fn update_recipes_list<C>(
@@ -20,9 +21,7 @@ pub fn update_recipes_list<C>(
     C: relm4::Component,
 {
     // Clear the recipes list
-    while let Some(child) = recipes_list_box.first_child() {
-        recipes_list_box.remove(&child);
-    }
+    utils::clear_list_box(&recipes_list_box);
 
     if let Some(ref dm) = data_manager {
         // Use engine method to search recipes
@@ -338,9 +337,7 @@ pub fn update_recipe_details<C>(
     C: relm4::Component,
 {
     // Clear previous content
-    while let Some(child) = recipes_details.first_child() {
-        recipes_details.remove(&child);
-    }
+    utils::clear_box(&recipes_details);
 
     if let Some(recipe_name) = selected_recipe {
         // Find the selected recipe in the data manager

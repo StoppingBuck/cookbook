@@ -11,6 +11,7 @@ mod settings;
 mod sidebar;
 mod tabs;
 mod types;
+mod utils;
 
 // First, we import the necessary libraries and modules
 // The gtk::prelude::* import brings in a collection of traits from the GTK library, which are essential for working with GTK widgets and their associated methods. This simplifies the usage of GTK by allowing you to call methods directly on widgets without needing to explicitly import each trait.
@@ -36,6 +37,7 @@ use std::env; // Import env for accessing environment variables
 use std::path::PathBuf; // Import PathBuf for handling file paths
 use std::rc::Rc; // Import Rc for reference counting // Import extension traits for widgets
 use types::{AppModel, AppMsg, AppWidgets, Tab};
+
 
 // Implement the SimpleComponent trait for the AppModel
 // This trait defines how the component is initialized, updated, and rendered
@@ -407,9 +409,7 @@ impl SimpleComponent for AppModel {
             let ingredient_name = self.selected_ingredient.as_ref().unwrap();
 
             // Clear previous content
-            while let Some(child) = widgets.pantry_details.first_child() {
-                widgets.pantry_details.remove(&child);
-            }
+            utils::clear_box(&widgets.pantry_details);
 
             if let Some(ref dm) = self.data_manager {
                 let details_view = pantry::build_ingredient_detail_view(
@@ -434,9 +434,7 @@ impl SimpleComponent for AppModel {
         } else if self.current_tab == Tab::Pantry && self.selected_ingredient.is_none() {
             // No ingredient selected
             // Clear previous content
-            while let Some(child) = widgets.pantry_details.first_child() {
-                widgets.pantry_details.remove(&child);
-            }
+            utils::clear_box(&widgets.pantry_details);
 
             let select_label = gtk::Label::new(Some("Select an ingredient to view details"));
             select_label.set_halign(gtk::Align::Center);

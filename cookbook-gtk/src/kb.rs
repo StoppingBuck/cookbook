@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use crate::types::AppModel;
 use crate::types::AppMsg;
+use crate::utils;
 
 /// Updates the KB entry list based on search text and other filters
 pub fn update_kb_list<C>(
@@ -19,9 +20,8 @@ pub fn update_kb_list<C>(
     C: relm4::Component,
 {
     // Clear the KB list
-    while let Some(child) = kb_list_box.first_child() {
-        kb_list_box.remove(&child);
-    }
+    utils::clear_list_box(&kb_list_box);
+
 
     if let Some(ref dm) = data_manager {
         let entries = dm.get_all_kb_entries();
@@ -173,9 +173,7 @@ pub fn update_kb_details<C>(
     C: relm4::Component,
 {
     // Clear previous content
-    while let Some(child) = kb_details.first_child() {
-        kb_details.remove(&child);
-    }
+    utils::clear_box(kb_details);
 
     if let Some(ref dm) = data_manager {
         let kb_details_scroll = build_kb_detail_view(dm, kb_slug, data_dir);
@@ -193,9 +191,8 @@ pub fn update_kb_details<C>(
 /// Shows a placeholder when no KB entry is selected
 pub fn show_kb_details_placeholder(kb_details: &gtk::Box) {
     // Clear previous content
-    while let Some(child) = kb_details.first_child() {
-        kb_details.remove(&child);
-    }
+    utils::clear_box(&kb_details);
+
 
     let select_label = gtk::Label::new(Some("Select an item to view details"));
     select_label.set_halign(gtk::Align::Center);

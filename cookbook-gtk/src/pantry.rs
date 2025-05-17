@@ -1,5 +1,6 @@
 use crate::types::AppModel;
 use crate::types::{AppMsg, Tab};
+use crate::utils;
 use cookbook_engine::DataManager;
 use gtk::glib;
 use gtk::prelude::*;
@@ -22,9 +23,8 @@ pub fn rebuild_pantry_list<C>(
     C: relm4::Component,
 {
     // Clear current list
-    while let Some(child) = pantry_list.first_child() {
-        pantry_list.remove(&child);
-    }
+    utils::clear_box(&pantry_list);
+
 
     if let Some(ref dm) = data_manager {
         let _pantry = dm.get_pantry(); // Prefix with underscore to avoid unused variable warning
@@ -369,9 +369,8 @@ pub fn update_pantry_details<C>(
     C: relm4::Component<Input = AppMsg>, // Add this constraint
 {
     // Clear previous content
-    while let Some(child) = pantry_details.first_child() {
-        pantry_details.remove(&child);
-    }
+    utils::clear_box(&pantry_details);
+
 
     if let Some(ingredient_name) = selected_ingredient {
         if let Some(ref dm) = data_manager {
