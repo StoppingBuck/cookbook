@@ -839,10 +839,23 @@ impl DataManager {
         // First update the ingredient itself
         self.update_ingredient(original_name, new_ingredient.clone())?;
         
-        // Then update the pantry if necessary
-        // We'll always pass the quantity_type (empty string if None)
-        if quantity.is_some() || quantity_type.is_some() {
-            self.update_pantry_item(&new_ingredient.name, quantity, quantity_type)?;
+        // Then update or remove the pantry item as needed
+        let qt = quantity_type.unwrap_or_else(|| "".to_string());
+
+        if quantity.is_some() || !qt.is_empty() {
+            // Add or update pantry item
+            self.update_pantry_item(&new_ingredient.name, quantity, Some(qt))?;
+        } else {
+            // Remove from pantry if present
+            if let Some(pantry) = self.pantry.as_mut() {
+                let before = pantry.items.len();
+                pantry.items.retain(|item| item.ingredient != new_ingredient.name);
+                if pantry.items.len() != before {
+                    // Save the updated pantry to file
+                    let pantry_path = self.data_dir.join("pantry.yaml");
+                    pantry.to_file(pantry_path)?;
+                }
+            }
         }
         
         Ok(true)

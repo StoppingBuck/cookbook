@@ -1,5 +1,6 @@
 use crate::types::{AppMsg, Tab};
 use cookbook_engine::DataManager;
+use gtk::glib;
 use gtk::prelude::*;
 use relm4::gtk;
 use relm4::ComponentSender;
@@ -90,21 +91,22 @@ pub fn rebuild_pantry_list<C>(
 
                         // Create the item label with quantity if available
                         let mut label_text = name.clone();
-                        if let Some(q) = quantity {
-                            if let Some(t) = quantity_type.as_ref() {
-                                if t.is_empty() {
-                                    label_text = format!("{} ({})", name, q);
-                                } else {
-                                    label_text = format!("{} ({} {})", name, q, t);
-                                }
-                            } else {
-                                label_text = format!("{} ({})", name, q);
-                            }
-                        }
-
-                        // Add checkmark for in-stock items
                         if *is_in_stock {
-                            label_text = format!("{} ✅", label_text);
+                            if let Some(q) = quantity {
+                                if let Some(t) = quantity_type.as_ref() {
+                                    if t.is_empty() {
+                                        label_text = format!("{} ({})", name, q);
+                                    } else {
+                                        label_text = format!("{} ({} {})", name, q, t);
+                                    }
+                                } else {
+                                    label_text = format!("{} ({})", name, q);
+                                }
+                                label_text = format!("{} ✅", label_text);
+                            } else {
+                                // Quantity unknown
+                                label_text = format!("{} ❓", name);
+                            }
                         }
 
                         let item_label = gtk::Label::new(Some(&label_text));
@@ -265,8 +267,10 @@ where
                             quantity, pantry_item.quantity_type
                         ));
                     }
+                    // Add checkmark
+                    stock_label.set_text(&format!("{} ✅", stock_label.text()));
                 } else {
-                    stock_label.set_markup("<b>In stock:</b> Yes (quantity unknown)");
+                    stock_label.set_markup("<b>In stock:</b> quantity unknown ❓");
                 }
 
                 stock_label.set_halign(gtk::Align::Start);
@@ -361,7 +365,7 @@ pub fn update_pantry_details<C>(
     data_manager: &Option<std::rc::Rc<cookbook_engine::DataManager>>,
     sender: &ComponentSender<C>,
 ) where
-    C: relm4::Component<Input = AppMsg>,  // Add this constraint
+    C: relm4::Component<Input = AppMsg>, // Add this constraint
 {
     // Clear previous content
     while let Some(child) = pantry_details.first_child() {
@@ -396,5 +400,266 @@ pub fn update_pantry_details<C>(
         select_label.set_halign(gtk::Align::Center);
         select_label.set_valign(gtk::Align::Center);
         pantry_details.append(&select_label);
+    }
+}
+
+pub fn show_edit_ingredient_dialog(
+    ingredient: &cookbook_engine::Ingredient,
+    pantry_item: Option<&cookbook_engine::PantryItem>,
+    data_manager: Option<Rc<cookbook_engine::DataManager>>,
+    sender: ComponentSender<crate::types::AppModel>,
+    ingredient_name: String,
+) {
+    let dialog = gtk::Dialog::new();
+    dialog.set_title(Some(&format!("Edit Ingredient: {}", ingredient_name)));
+    dialog.set_modal(true);
+    dialog.set_default_width(400);
+
+    // Set transient parent to an appropriate application window
+    for window in gtk::Window::list_toplevels() {
+        if let Some(win) = window.downcast_ref::<gtk::Window>() {
+            if win != dialog.upcast_ref::<gtk::Window>() {
+                dialog.set_transient_for(Some(win));
+                break;
+            }
+        }
+    }
+
+    let content_area = dialog.content_area();
+    content_area.set_margin_all(10);
+    content_area.set_spacing(10);
+
+    // Name field
+    let name_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let name_label = gtk::Label::new(Some("Name:"));
+    name_label.set_halign(gtk::Align::Start);
+    name_label.set_width_chars(12);
+    let name_entry = gtk::Entry::new();
+    name_entry.set_text(&ingredient.name);
+    name_entry.set_hexpand(true);
+    name_box.append(&name_label);
+    name_box.append(&name_entry);
+    content_area.append(&name_box);
+
+    // Category field
+    let category_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let category_label = gtk::Label::new(Some("Category:"));
+    category_label.set_halign(gtk::Align::Start);
+    category_label.set_width_chars(12);
+    let category_entry = gtk::Entry::new();
+    category_entry.set_text(&ingredient.category);
+    category_entry.set_hexpand(true);
+    category_box.append(&category_label);
+    category_box.append(&category_entry);
+    content_area.append(&category_box);
+
+    // KB field
+    let kb_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let kb_label = gtk::Label::new(Some("KB Reference:"));
+    kb_label.set_halign(gtk::Align::Start);
+    kb_label.set_width_chars(12);
+    let kb_entry = gtk::Entry::new();
+    if let Some(kb) = &ingredient.kb {
+        kb_entry.set_text(kb);
+    }
+    kb_entry.set_hexpand(true);
+    kb_box.append(&kb_label);
+    kb_box.append(&kb_entry);
+    content_area.append(&kb_box);
+
+    // Tags field (comma-separated)
+    let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let tags_label = gtk::Label::new(Some("Tags:"));
+    tags_label.set_halign(gtk::Align::Start);
+    tags_label.set_width_chars(12);
+    let tags_entry = gtk::Entry::new();
+    tags_entry.set_text(&ingredient.tags.clone().unwrap_or_default().join(", "));
+    tags_entry.set_hexpand(true);
+    tags_box.append(&tags_label);
+    tags_box.append(&tags_entry);
+    content_area.append(&tags_box);
+
+    // Separator
+    content_area.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+
+    // Pantry "In Stock" checkbox
+    let in_stock_check = gtk::CheckButton::with_label("In Stock");
+    in_stock_check.set_active(pantry_item.is_some());
+    content_area.append(&in_stock_check);
+
+    // Pantry quantity fields
+    let quantity_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let quantity_label = gtk::Label::new(Some("Quantity:"));
+    quantity_label.set_halign(gtk::Align::Start);
+    quantity_label.set_width_chars(12);
+    let quantity_entry = gtk::Entry::new();
+    quantity_box.append(&quantity_label);
+    quantity_box.append(&quantity_entry);
+    content_area.append(&quantity_box);
+
+    // Quantity type field
+    let quantity_type_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let quantity_type_label = gtk::Label::new(Some("Unit:"));
+    quantity_type_label.set_halign(gtk::Align::Start);
+    quantity_type_label.set_width_chars(12);
+    let quantity_type_entry = gtk::Entry::new();
+    quantity_type_box.append(&quantity_type_label);
+    quantity_type_box.append(&quantity_type_entry);
+    content_area.append(&quantity_type_box);
+
+    // Set pantry values if they exist
+    if let Some(pantry_item) = pantry_item {
+        if let Some(qty) = pantry_item.quantity {
+            quantity_entry.set_text(&qty.to_string());
+        }
+        quantity_type_entry.set_text(&pantry_item.quantity_type);
+    }
+
+    // Create clones for the closure
+    let sender_clone = sender.clone();
+    let ingredient_name_clone = ingredient_name.clone();
+    let data_manager_clone = data_manager.clone();
+
+    dialog.add_button("Cancel", gtk::ResponseType::Cancel);
+    dialog.add_button("Save", gtk::ResponseType::Accept);
+
+    dialog.connect_response(move |dialog, response| {
+        if response == gtk::ResponseType::Accept {
+            let new_name = name_entry.text().to_string();
+            let new_category = category_entry.text().to_string();
+            let new_kb = if kb_entry.text().is_empty() {
+                None
+            } else {
+                Some(kb_entry.text().to_string())
+            };
+
+            // Parse tags (comma-separated)
+            let new_tags = tags_entry
+                .text()
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<String>>();
+
+            // Create new ingredient
+            let new_ingredient = cookbook_engine::Ingredient {
+                name: new_name,
+                category: new_category,
+                kb: new_kb,
+                tags: Some(new_tags),
+            };
+
+            let in_stock = in_stock_check.is_active();
+
+            // Parse quantity and quantity_type
+            let quantity_text = quantity_entry.text().to_string();
+            let quantity = if quantity_text.is_empty() {
+                None
+            } else {
+                match quantity_text.parse::<f64>() {
+                    Ok(val) => Some(val),
+                    Err(_) => None,
+                }
+            };
+            let quantity_type = Some(quantity_type_entry.text().to_string());
+
+            if let Some(_rc_dm) = &data_manager_clone {
+                let original_name = ingredient_name_clone.clone();
+                let ingredient_clone = new_ingredient.clone();
+
+                let sender_clone2 = sender_clone.clone();
+                // Only update pantry if "In Stock" is checked
+                if in_stock {
+                    sender_clone2.input(AppMsg::UpdateIngredientWithPantry(
+                        original_name,
+                        ingredient_clone,
+                        quantity,
+                        quantity_type,
+                    ));
+                } else {
+                    // Remove from pantry if not in stock
+                    sender_clone2.input(AppMsg::UpdateIngredientWithPantry(
+                        original_name,
+                        ingredient_clone,
+                        None,
+                        None,
+                    ));
+                }
+
+                match Result::<bool, cookbook_engine::CookbookError>::Ok(true) {
+                    Ok(_) => {
+                        let new_selected_name = new_ingredient.name.clone();
+                        let sender_clone_inner = sender_clone.clone();
+                        glib::spawn_future_local(async move {
+                            sender_clone_inner.input(AppMsg::SelectIngredient(new_selected_name));
+                        });
+                    }
+                    Err(err) => {
+                        let error_dialog = gtk::MessageDialog::new(
+                            None::<&gtk::Window>,
+                            gtk::DialogFlags::MODAL,
+                            gtk::MessageType::Error,
+                            gtk::ButtonsType::Ok,
+                            &format!("Failed to update ingredient: {}", err),
+                        );
+                        error_dialog.connect_response(|dialog, _| dialog.destroy());
+                        error_dialog.show();
+                    }
+                }
+            }
+        }
+        dialog.destroy();
+    });
+
+    dialog.show();
+}
+
+/// Handles updating an ingredient and its pantry data, including error dialogs and UI refresh.
+pub fn handle_update_ingredient_with_pantry(
+    old_data_manager: &Option<Rc<DataManager>>,
+    original_name: &str,
+    new_ingredient: cookbook_engine::Ingredient,
+    quantity: Option<f64>,
+    quantity_type: Option<String>,
+    current_tab: crate::types::Tab,
+    sender: &ComponentSender<crate::types::AppModel>,
+) -> Option<(Rc<DataManager>, String)> {
+    if let Some(old_data_manager) = old_data_manager {
+        match DataManager::create_with_updated_ingredient(
+            old_data_manager.get_data_dir(),
+            original_name,
+            new_ingredient.clone(),
+            quantity,
+            quantity_type,
+        ) {
+            Ok(updated_manager) => {
+                // UI refresh logic here (as before)
+                if current_tab == crate::types::Tab::Recipes {
+                    let sender_clone = sender.clone();
+                    glib::spawn_future_local(async move {
+                        sender_clone.input(AppMsg::SwitchTab(crate::types::Tab::Pantry));
+                        sender_clone.input(AppMsg::SwitchTab(crate::types::Tab::Recipes));
+                    });
+                }
+                Some((Rc::new(updated_manager), new_ingredient.name.clone()))
+            }
+            Err(err) => {
+                eprintln!("Error updating ingredient: {:?}", err);
+                let error_message = format!("Failed to update ingredient: {}", err);
+                glib::spawn_future_local(async move {
+                    let dialog = gtk::MessageDialog::builder()
+                        .modal(true)
+                        .buttons(gtk::ButtonsType::Ok)
+                        .message_type(gtk::MessageType::Error)
+                        .text(&error_message)
+                        .build();
+                    dialog.connect_response(|dialog, _| dialog.destroy());
+                    dialog.show();
+                });
+                None
+            }
+        }
+    } else {
+        None
     }
 }
