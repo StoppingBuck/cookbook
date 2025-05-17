@@ -33,7 +33,8 @@ pub enum AppMsg {
         cookbook_engine::Ingredient,
         Option<f64>,
         Option<String>,
-    ), // (original_name, new_ingredient, quantity, quantity_type)
+        bool, // remove_from_pantry
+    ), // (original_name, new_ingredient, quantity, quantity_type, remove_from_pantry)
     UpdateRecipe(String, cookbook_engine::Recipe), // (original_title, new_recipe)
     ClearError,
 }

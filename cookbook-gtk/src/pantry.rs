@@ -590,23 +590,22 @@ pub fn show_edit_ingredient_dialog(
             if let Some(_rc_dm) = &data_manager_clone {
                 let original_name = ingredient_name_clone.clone();
                 let ingredient_clone = new_ingredient.clone();
-
                 let sender_clone2 = sender_clone.clone();
-                // Only update pantry if "In Stock" is checked
-                if in_stock {
+                if !in_stock {
+                    sender_clone2.input(AppMsg::UpdateIngredientWithPantry(
+                        original_name,
+                        ingredient_clone,
+                        None,
+                        None,
+                        true, // remove_from_pantry
+                    ));
+                } else {
                     sender_clone2.input(AppMsg::UpdateIngredientWithPantry(
                         original_name,
                         ingredient_clone,
                         quantity,
                         quantity_type,
-                    ));
-                } else {
-                    // Remove from pantry if not in stock
-                    sender_clone2.input(AppMsg::UpdateIngredientWithPantry(
-                        original_name,
-                        ingredient_clone,
-                        None,
-                        None,
+                        false, // remove_from_pantry
                     ));
                 }
 
@@ -645,6 +644,7 @@ pub fn handle_update_ingredient_with_pantry(
     new_ingredient: cookbook_engine::Ingredient,
     quantity: Option<f64>,
     quantity_type: Option<String>,
+    remove_from_pantry: bool,
     current_tab: crate::types::Tab,
     sender: &ComponentSender<crate::types::AppModel>,
 ) -> Option<(Rc<DataManager>, String)> {
@@ -655,6 +655,7 @@ pub fn handle_update_ingredient_with_pantry(
             new_ingredient.clone(),
             quantity,
             quantity_type,
+            remove_from_pantry,
         ) {
             Ok(updated_manager) => {
                 // UI refresh logic here (as before)

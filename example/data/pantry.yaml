@@ -8,19 +8,27 @@ items:
   quantity: 3.0
   quantity_type: t
   last_updated: 2025-05-17
-- ingredient: chicken breast
-  quantity: 1.0
-  quantity_type: ton
-  last_updated: 2025-05-15
-- ingredient: flour
-  quantity: 2.0
-  quantity_type: ''
-  last_updated: 2025-05-14
 - ingredient: cheeese
   quantity: 1.0
   quantity_type: t
   last_updated: 2025-05-17
 - ingredient: milk
   quantity: 1.0
+  quantity_type: ''
+  last_updated: 2025-05-17
+- ingredient: butter2
+  quantity: 2.0
+  quantity_type: ''
+  last_updated: 2025-05-17
+- ingredient: flour
+  quantity: null
+  quantity_type: ''
+  last_updated: 2025-05-17
+- ingredient: pasta
+  quantity: null
+  quantity_type: ''
+  last_updated: 2025-05-17
+- ingredient: pastas
+  quantity: null
   quantity_type: ''
   last_updated: 2025-05-17

@@ -307,6 +307,7 @@ impl SimpleComponent for AppModel {
                 new_ingredient,
                 quantity,
                 quantity_type,
+                remove_from_pantry,
             ) => {
                 if let Some((updated_manager, new_selected_name)) =
                     pantry::handle_update_ingredient_with_pantry(
@@ -315,6 +316,7 @@ impl SimpleComponent for AppModel {
                         new_ingredient,
                         quantity,
                         quantity_type,
+                        remove_from_pantry,
                         self.current_tab.clone(),
                         &sender,
                     )

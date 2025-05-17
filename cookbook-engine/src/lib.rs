@@ -116,7 +116,7 @@ impl Ingredient {
         
         fs::write(&path, yaml)
             .map_err(|e| CookbookError::WriteError(format!("Failed to write ingredient file: {}", e)))?;   // Write the YAML content to the file
-            
+        println!("Successfully wrote to {}!", path.as_ref().display());
         Ok(()) // Return Ok if successful
     }
 }
@@ -136,7 +136,7 @@ impl Pantry {
         
         fs::write(&path, yaml)
             .map_err(|e| CookbookError::WriteError(format!("Failed to write pantry file: {}", e)))?; // Write the YAML content to the file
-            
+        println!("Successfully wrote to {}!", path.as_ref().display());
         Ok(()) // Return Ok if successful
     }
 }
@@ -189,7 +189,7 @@ impl Recipe {
         // Write to file
         fs::write(&path, content)
             .map_err(|e| CookbookError::WriteError(format!("Failed to write recipe file: {}", e)))?;
-        
+        println!("Successfully wrote to {}!", path.as_ref().display());
         Ok(())
     }
     
@@ -831,35 +831,32 @@ impl DataManager {
     }
     
     /// Updates an ingredient with potential changes to both ingredient properties and pantry values
-    pub fn update_ingredient_with_pantry(&mut self,
-                                       original_name: &str,
-                                       new_ingredient: Ingredient,
-                                       quantity: Option<f64>,
-                                       quantity_type: Option<String>) -> Result<bool, CookbookError> {
-        // First update the ingredient itself
-        self.update_ingredient(original_name, new_ingredient.clone())?;
-        
-        // Then update or remove the pantry item as needed
-        let qt = quantity_type.unwrap_or_else(|| "".to_string());
+    pub fn update_ingredient_with_pantry(
+    &mut self,
+    original_name: &str,
+    new_ingredient: Ingredient,
+    quantity: Option<f64>,
+    quantity_type: Option<String>,
+    remove_from_pantry: bool,
+) -> Result<bool, CookbookError> {
+    // First update the ingredient itself
+    self.update_ingredient(original_name, new_ingredient.clone())?;
 
-        if quantity.is_some() || !qt.is_empty() {
-            // Add or update pantry item
-            self.update_pantry_item(&new_ingredient.name, quantity, Some(qt))?;
-        } else {
-            // Remove from pantry if present
-            if let Some(pantry) = self.pantry.as_mut() {
-                let before = pantry.items.len();
-                pantry.items.retain(|item| item.ingredient != new_ingredient.name);
-                if pantry.items.len() != before {
-                    // Save the updated pantry to file
-                    let pantry_path = self.data_dir.join("pantry.yaml");
-                    pantry.to_file(pantry_path)?;
-                }
-            }
+    if remove_from_pantry {
+        // Remove from pantry if present
+        if let Some(pantry) = self.pantry.as_mut() {
+            pantry.items.retain(|item| item.ingredient != new_ingredient.name);
+            let pantry_path = self.data_dir.join("pantry.yaml");
+            pantry.to_file(pantry_path)?;
         }
-        
-        Ok(true)
+    } else {
+        // Add or update pantry item
+        let qt = quantity_type.unwrap_or_else(|| "".to_string());
+        self.update_pantry_item(&new_ingredient.name, quantity, Some(qt))?;
     }
+
+    Ok(true)
+}
     
     /// Creates a new DataManager instance with updated ingredient and pantry values
     /// This is a utility method for UIs that need to update ingredients while maintaining immutability
@@ -870,13 +867,12 @@ impl DataManager {
         new_ingredient: Ingredient,
         quantity: Option<f64>,
         quantity_type: Option<String>,
+        remove_from_pantry: bool,
     ) -> Result<Self, CookbookError> {
         // Create a new DataManager instance
         let mut manager = DataManager::new(data_dir)?;
-        
         // Perform the update
-        manager.update_ingredient_with_pantry(original_name, new_ingredient, quantity, quantity_type)?;
-        
+        manager.update_ingredient_with_pantry(original_name, new_ingredient, quantity, quantity_type, remove_from_pantry)?;
         // Return the updated manager
         Ok(manager)
     }
