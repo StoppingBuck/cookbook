@@ -7,6 +7,7 @@ mod dialogs;
 mod kb;
 mod pantry;
 mod recipes;
+mod settings;
 mod sidebar;
 mod tabs;
 mod types;
@@ -96,6 +97,7 @@ impl SimpleComponent for AppModel {
             show_help_dialog: false,                // Help dialog is not shown by default
             selected_pantry_categories: Vec::new(), // No category filters selected initially
             show_in_stock_only: false,              // Don't filter by stock status initially
+            error_message: None,                    // No error message initially
         };
 
         // Load data using the DataManager
@@ -146,20 +148,7 @@ impl SimpleComponent for AppModel {
         let (kb_container, kb_list_box, kb_details, kb_label) = kb::build_kb_tab(&model, &sender);
 
         // Settings tab content
-        let settings_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
-
-        let settings_title = gtk::Label::new(Some("Settings"));
-        settings_title.set_markup("<span size='x-large' weight='bold'>Settings</span>");
-        settings_title.set_halign(gtk::Align::Start);
-        settings_title.set_margin_all(10);
-
-        let settings_label =
-            gtk::Label::new(Some("Settings will be implemented in a future version."));
-        settings_label.set_halign(gtk::Align::Start);
-        settings_label.set_margin_start(10);
-
-        settings_container.append(&settings_title);
-        settings_container.append(&settings_label);
+        let settings_container = settings::build_settings_tab();
 
         // Add tab content to stack
         main_stack.add_named(&recipes_container, Some("recipes"));
@@ -197,7 +186,7 @@ impl SimpleComponent for AppModel {
             kb_label: kb_label.clone(),
             kb_list_box: kb_list_box, // Store the KB list box
             kb_details: kb_details,   // Store the KB details container
-            settings_label: settings_label.clone(),
+            //settings_label: settings_label.clone(),
             sidebar_buttons,
         };
 
@@ -359,24 +348,14 @@ impl SimpleComponent for AppModel {
                         }
                         Err(err) => {
                             eprintln!("Error updating recipe: {:?}", err);
-
-                            // Show error dialog to the user in a safe way
                             let error_message = format!("Failed to update recipe: {}", err);
-
-                            glib::spawn_future_local(async move {
-                                let dialog = gtk::MessageDialog::builder()
-                                    .modal(true)
-                                    .buttons(gtk::ButtonsType::Ok)
-                                    .message_type(gtk::MessageType::Error)
-                                    .text(&error_message)
-                                    .build();
-
-                                dialog.connect_response(|dialog, _| dialog.destroy());
-                                dialog.show();
-                            });
+                            self.error_message = Some(error_message);
                         }
                     }
                 }
+            }
+            AppMsg::ClearError => {
+                self.error_message = None;
             }
         }
     }
@@ -535,6 +514,15 @@ impl SimpleComponent for AppModel {
             &sender,
             AppMsg::SelectRecipe,
         );
+
+        if let Some(ref msg) = self.error_message {
+            dialogs::show_error_dialog(&widgets.window, msg);
+            // Clear the error after showing
+            let sender_clone = sender.clone();
+            glib::spawn_future_local(async move {
+                sender_clone.input(AppMsg::ClearError);
+            });
+        }
     } // == UPDATE_VIEW ENDS HERE ==
 }
 //

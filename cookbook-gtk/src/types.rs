@@ -35,6 +35,7 @@ pub enum AppMsg {
         Option<String>,
     ), // (original_name, new_ingredient, quantity, quantity_type)
     UpdateRecipe(String, cookbook_engine::Recipe), // (original_title, new_recipe)
+    ClearError,
 }
 
 /// The main application model representing the application state
@@ -51,6 +52,7 @@ pub struct AppModel {
     pub show_help_dialog: bool,
     pub selected_pantry_categories: Vec<String>,
     pub show_in_stock_only: bool,
+    pub error_message: Option<String>,
 }
 
 /// References to GTK widgets used in the application
@@ -69,6 +71,6 @@ pub struct AppWidgets {
     pub kb_label: gtk::Label,
     pub kb_list_box: gtk::ListBox,
     pub kb_details: gtk::Box,
-    pub settings_label: gtk::Label,
+    //pub settings_label: gtk::Label,
     pub sidebar_buttons: Vec<gtk::Button>,
 }
