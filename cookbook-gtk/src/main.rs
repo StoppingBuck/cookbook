@@ -142,7 +142,6 @@ impl SimpleComponent for AppModel {
             pantry_container,
             pantry_list_container,
             pantry_details_box,
-            category_filters_box,
             stock_filter_switch,
             pantry_title,
         ) = pantry::build_pantry_tab(&model, &sender);
@@ -184,7 +183,7 @@ impl SimpleComponent for AppModel {
             pantry_label: pantry_title.clone(), // Use pantry_title instead of pantry_label
             pantry_list: pantry_list_container, // Store the pantry list container
             pantry_details: pantry_details_box, // Use pantry_details_box instead of pantry_details
-            pantry_category_filters: category_filters_box, // Store category filter checkboxes
+            // pantry_category_filters: category_filters_box, // REMOVED
             pantry_in_stock_switch: stock_filter_switch, // Store in-stock filter switch
             kb_label: kb_label.clone(),
             kb_list_box: kb_list_box, // Store the KB list box

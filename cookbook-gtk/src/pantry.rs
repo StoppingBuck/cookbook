@@ -759,7 +759,7 @@ pub fn handle_update_ingredient_with_pantry(
     }
 }
 
-/// Builds the Pantry tab UI and returns the main container, list container, details box, category filters, in-stock switch, and title label.
+/// Builds the Pantry tab UI and returns the main container, list container, details box, in-stock switch, and title label.
 pub fn build_pantry_tab(
     model: &AppModel,
     sender: &ComponentSender<AppModel>,
@@ -767,7 +767,6 @@ pub fn build_pantry_tab(
     gtk::Box,    // pantry_container
     gtk::Box,    // pantry_list_container
     gtk::Box,    // pantry_details_box
-    gtk::Box,    // category_filters_box
     gtk::Switch, // stock_filter_switch
     gtk::Label,  // pantry_title
 ) {
@@ -787,13 +786,25 @@ pub fn build_pantry_tab(
     let filters_container = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
     filters_container.set_margin_all(DEFAULT_MARGIN);
 
-    // Category filters
+    // Category filters (popover multi-select)
     let category_filters_label = gtk::Label::new(Some("Categories:"));
     category_filters_label.set_halign(gtk::Align::Start);
     category_filters_label.set_margin_bottom(LIST_ROW_MARGIN);
 
-    let category_filters_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
-    category_filters_box.set_margin_bottom(DEFAULT_MARGIN);
+    // Button to open popover
+    let filter_button = gtk::Button::with_label("Filter Categories");
+    filter_button.set_halign(gtk::Align::Start);
+    filter_button.set_tooltip_text(Some("Filter by one or more categories"));
+
+    // Popover for category selection
+    let category_popover = gtk::Popover::new();
+    let popover_box = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
+    popover_box.set_margin_all(DEFAULT_MARGIN);
+    popover_box.set_vexpand(true);
+    let scroll = gtk::ScrolledWindow::new();
+    scroll.set_min_content_height(180);
+    scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+    let listbox = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
 
     // Get unique categories from ingredients using the engine's method
     let mut categories: Vec<String> = Vec::new();
@@ -801,7 +812,7 @@ pub fn build_pantry_tab(
         categories = dm.as_ref().get_unique_categories();
     }
 
-    // Create filter checkboxes
+    // Create filter checkboxes in the popover
     for category in &categories {
         let check = gtk::CheckButton::with_label(category);
         check.set_active(model.selected_pantry_categories.contains(category));
@@ -813,7 +824,24 @@ pub fn build_pantry_tab(
                 btn.is_active(),
             ));
         });
-        category_filters_box.append(&check);
+        listbox.append(&check);
+    }
+    scroll.set_child(Some(&listbox));
+    popover_box.append(&scroll);
+    category_popover.set_child(Some(&popover_box));
+    // filter_button.set_popover(Some(&category_popover));
+
+    // Attach popover to button and show on click
+    category_popover.set_parent(&filter_button);
+    let popover_clone = category_popover.clone();
+    filter_button.connect_clicked(move |_| {
+        popover_clone.popup();
+    });
+
+    // Update button label to show number of selected categories
+    let selected_count = model.selected_pantry_categories.len();
+    if selected_count > 0 {
+        filter_button.set_label(&format!("Filter Categories ({})", selected_count));
     }
 
     // In-stock only filter
@@ -832,7 +860,7 @@ pub fn build_pantry_tab(
     stock_filter_box.append(&stock_filter_switch);
 
     filters_container.append(&category_filters_label);
-    filters_container.append(&category_filters_box);
+    filters_container.append(&filter_button);
     filters_container.append(&stock_filter_box);
 
     filters_frame.set_child(Some(&filters_container));
@@ -889,7 +917,6 @@ pub fn build_pantry_tab(
         pantry_container,
         pantry_list_container,
         pantry_details_box,
-        category_filters_box,
         stock_filter_switch,
         pantry_title,
     )

@@ -72,7 +72,6 @@ pub struct AppWidgets {
     pub pantry_label: gtk::Label,
     pub pantry_list: gtk::Box,
     pub pantry_details: gtk::Box,
-    pub pantry_category_filters: gtk::Box,
     pub pantry_in_stock_switch: gtk::Switch,
     pub kb_label: gtk::Label,
     pub kb_list_box: gtk::ListBox,
