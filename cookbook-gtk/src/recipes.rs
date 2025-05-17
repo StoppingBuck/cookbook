@@ -401,8 +401,8 @@ pub fn show_edit_recipe_dialog(
     let dialog = gtk::Dialog::new();
     dialog.set_title(Some(&format!("Edit Recipe: {}", recipe_title)));
     dialog.set_modal(true);
-    dialog.set_default_width(500);
-    dialog.set_default_height(600);
+    dialog.set_default_width(700); // Increased from 500
+    dialog.set_default_height(800); // Increased from 600
 
     // Set transient parent to an appropriate application window
     for window in gtk::Window::list_toplevels() {
