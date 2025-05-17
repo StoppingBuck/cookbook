@@ -3,6 +3,12 @@
 // It initializes the GTK application, sets up the main window, and handles user interactions
 // The application is built using the relm4 library, which provides a way to create GTK applications in Rust
 
+mod dialogs;
+mod kb;
+mod pantry;
+mod recipes;
+mod types;
+
 // First, we import the necessary libraries and modules
 // The gtk::prelude::* import brings in a collection of traits from the GTK library, which are essential for working with GTK widgets and their associated methods. This simplifies the usage of GTK by allowing you to call methods directly on widgets without needing to explicitly import each trait.
 // The cookbook_engine::DataManager import brings in the DataManager type from the cookbook_engine crate. This is the brain of the application, responsible for managing data such as recipes, pantry items, and ingredients. It acts as the bridge between the GUI and the underlying business logic.
@@ -26,82 +32,7 @@ use relm4::SimpleComponent; // Import trait for implementing UI components
 use std::env; // Import env for accessing environment variables
 use std::path::PathBuf; // Import PathBuf for handling file paths
 use std::rc::Rc; // Import Rc for reference counting // Import extension traits for widgets
-
-// Define the dialogs module
-mod dialogs;
-mod kb;
-mod pantry;
-mod recipes;
-
-// The main application model, representing the state of the app (e.g., current tab, selected recipe)
-#[allow(dead_code)]
-struct AppModel {
-    data_manager: Option<Rc<DataManager>>, // Manages data loading and saving (e.g., recipes, pantry items)
-    data_dir: PathBuf,                     // Path to the directory containing the data files
-    current_tab: Tab, // The currently selected tab in the UI (e.g., Recipes, Pantry)
-    selected_recipe: Option<String>, // The name of the currently selected recipe, if any
-    selected_ingredient: Option<String>, // The name of the currently selected ingredient, if any
-    selected_kb_entry: Option<String>, // The slug of the currently selected KB entry, if any
-    search_text: String, // The current text in the search bar
-    show_about_dialog: bool, // Flag to indicate if the About dialog should be shown
-    show_help_dialog: bool, // Flag to indicate if the Help dialog should be shown
-    selected_pantry_categories: Vec<String>, // The currently selected categories for filtering the pantry
-    show_in_stock_only: bool, // Flag to indicate if only in-stock ingredients should be shown
-}
-
-// Enum representing the different tabs in the application
-#[derive(Debug, Clone, PartialEq)]
-enum Tab {
-    Recipes,       // Recipes tab
-    Pantry,        // Pantry tab
-    KnowledgeBase, // Knowledge Base tab
-    Settings,      // Settings tab
-}
-
-// Messages that the app can respond to (e.g., user actions)
-#[derive(Debug, Clone)]
-enum AppMsg {
-    SwitchTab(Tab),                     // Switch to a different tab
-    ShowAbout,                          // Show the About dialog
-    ShowHelp,                           // Show the Help dialog
-    ResetDialogs,                       // Reset dialog flags
-    SelectRecipe(String),               // Select a recipe by name
-    SelectIngredient(String),           // Select an ingredient by name
-    SelectKnowledgeBaseEntry(String),   // Select a KB entry by slug
-    ToggleCategoryFilter(String, bool), // Toggle a category filter (category, is_selected)
-    ToggleInStockFilter(bool),          // Toggle the in-stock only filter
-    SearchTextChanged(String),          // Update the search text
-    EditIngredient(String),             // Edit an ingredient
-    EditRecipe(String),                 // Edit a recipe
-    // New messages to handle updates that require mutable access to DataManager
-    UpdateIngredientWithPantry(
-        String,
-        cookbook_engine::Ingredient,
-        Option<f64>,
-        Option<String>,
-    ), // (original_name, new_ingredient, quantity, quantity_type)
-    UpdateRecipe(String, cookbook_engine::Recipe), // (original_title, new_recipe)
-}
-
-// References to the GTK widgets used in the app (e.g. buttons, labels, stack)
-#[allow(dead_code)]
-struct AppWidgets {
-    window: gtk::ApplicationWindow,      // The main application window
-    main_stack: gtk::Stack,              // The stack for switching between tabs
-    recipes_label: gtk::Label,           // Label for displaying recipe details
-    recipes_details: gtk::Box,           // Container for recipe details
-    recipes_list_box: gtk::ListBox,      // The list box containing recipe items
-    pantry_label: gtk::Label,            // Label for displaying pantry info
-    pantry_list: gtk::Box,               // Container for the pantry list items
-    pantry_details: gtk::Box,            // Container for pantry item details
-    pantry_category_filters: gtk::Box,   // Container for category filter checkboxes
-    pantry_in_stock_switch: gtk::Switch, // Switch for toggling in-stock only filter
-    kb_label: gtk::Label,                // Label for displaying knowledge base info
-    kb_list_box: gtk::ListBox,           // The list box containing KB entry items
-    kb_details: gtk::Box,                // Container for KB entry details
-    settings_label: gtk::Label,          // Label for displaying settings info
-    sidebar_buttons: Vec<gtk::Button>,   // Buttons in the sidebar
-}
+use types::{AppModel, AppMsg, AppWidgets, Tab};
 
 // Implement the SimpleComponent trait for the AppModel
 // This trait defines how the component is initialized, updated, and rendered
@@ -1739,7 +1670,7 @@ impl SimpleComponent for AppModel {
             if let Some(kb_slug) = &self.selected_kb_entry {
                 // Update the selection in the list
                 kb::select_kb_entry_in_list(&widgets.kb_list_box, kb_slug);
-                
+
                 // Update the details view
                 kb::update_kb_details::<Self>(
                     &widgets.kb_details,
@@ -1751,7 +1682,7 @@ impl SimpleComponent for AppModel {
                 // No KB entry selected, show placeholder
                 kb::show_kb_details_placeholder(&widgets.kb_details);
             }
-            
+
             // Update the KB list if needed
             // Only do this when first switching to the tab to avoid unnecessary rebuilds
             if self.current_tab != Tab::KnowledgeBase {
