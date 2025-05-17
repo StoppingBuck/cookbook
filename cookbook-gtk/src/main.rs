@@ -291,6 +291,23 @@ impl SimpleComponent for AppModel {
                     }
                 }
             }
+            // Message: User clicks the Add Ingredient button
+            AppMsg::AddIngredient => {
+                // Create a blank ingredient and no pantry item
+                let blank_ingredient = cookbook_engine::Ingredient {
+                    name: String::new(),
+                    category: String::new(),
+                    kb: None,
+                    tags: Some(Vec::new()),
+                };
+                pantry::show_edit_ingredient_dialog(
+                    &blank_ingredient,
+                    None,
+                    self.data_manager.clone(),
+                    sender.clone(),
+                    String::new(),
+                );
+            }
             // Message: User updates an ingredient with pantry data
             AppMsg::UpdateIngredientWithPantry(
                 original_name,
@@ -345,6 +362,20 @@ impl SimpleComponent for AppModel {
                         Err(err) => {
                             eprintln!("Error updating recipe: {:?}", err);
                             let error_message = format!("Failed to update recipe: {}", err);
+                            self.error_message = Some(error_message);
+                        }
+                    }
+                }
+            }
+            // Message: Explicitly reload pantry data and UI
+            AppMsg::ReloadPantry => {
+                if let Some(ref data_manager) = self.data_manager {
+                    match cookbook_engine::DataManager::new(data_manager.get_data_dir()) {
+                        Ok(updated_manager) => {
+                            self.data_manager = Some(Rc::new(updated_manager));
+                        }
+                        Err(err) => {
+                            let error_message = format!("Failed to reload pantry: {}", err);
                             self.error_message = Some(error_message);
                         }
                     }

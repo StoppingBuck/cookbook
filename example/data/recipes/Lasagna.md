@@ -11,10 +11,9 @@ PrepTime: 30
 Downtime: 60
 Servings: 2
 Tags:
-- dinner
 - pasta
 - sex
 - mario
-- ti
+image: null
 ---
 Start by boiling the potatoes. Then, layer them with the tomatoes and cheese in a baking dish. Bake for 60 minutes at 180C.

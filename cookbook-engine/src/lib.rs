@@ -698,7 +698,7 @@ impl DataManager {
         // Check if the ingredient exists in the ingredients
         if !self.ingredients.contains_key(ingredient_name) {
             return Err(CookbookError::UpdateError(
-                format!("Ingredient '{}' does not exist", ingredient_name)
+                format!("update_pantry_item: Ingredient '{}' does not exist", ingredient_name)
             ));
         }
         
@@ -739,14 +739,14 @@ impl DataManager {
         // Check if the original ingredient exists
         if !self.ingredients.contains_key(original_name) {
             return Err(CookbookError::UpdateError(
-                format!("Ingredient '{}' does not exist", original_name)
+                format!("update_ingredient: Ingredient '{}' does not exist", original_name)
             ));
         }
         
         // Check if the new name conflicts with an existing ingredient (if name is changing)
         if original_name != new_ingredient.name && self.ingredients.contains_key(&new_ingredient.name) {
             return Err(CookbookError::UpdateError(
-                format!("Cannot rename: ingredient '{}' already exists", new_ingredient.name)
+                format!("update_ingredient: Cannot rename: ingredient '{}' already exists", new_ingredient.name)
             ));
         }
         
@@ -795,14 +795,14 @@ impl DataManager {
         // Check if the original recipe exists
         if !self.recipes.iter().any(|r| r.title == original_title) {
             return Err(CookbookError::UpdateError(
-                format!("Recipe '{}' does not exist", original_title)
+                format!("update_recipe: Recipe '{}' does not exist", original_title)
             ));
         }
         
         // Check if the new title conflicts with an existing recipe (if title is changing)
         if original_title != new_recipe.title && self.recipes.iter().any(|r| r.title == new_recipe.title) {
             return Err(CookbookError::UpdateError(
-                format!("Cannot rename: recipe '{}' already exists", new_recipe.title)
+                format!("update_recipe: Cannot rename: recipe '{}' already exists", new_recipe.title)
             ));
         }
         
@@ -827,6 +827,19 @@ impl DataManager {
         }
         
         Ok(true)
+    }
+    
+    /// Removes an ingredient from the pantry by name
+    pub fn remove_from_pantry(&mut self, ingredient_name: &str) -> Result<bool, CookbookError> {
+        if let Some(pantry) = self.pantry.as_mut() {
+            let original_len = pantry.items.len();
+            pantry.items.retain(|item| item.ingredient != ingredient_name);
+            let pantry_path = self.data_dir.join("pantry.yaml");
+            pantry.to_file(pantry_path)?;
+            Ok(pantry.items.len() < original_len)
+        } else {
+            Err(CookbookError::UpdateError("No pantry loaded".to_string()))
+        }
     }
     
     /// Updates an ingredient with potential changes to both ingredient properties and pantry values
@@ -930,5 +943,20 @@ impl DataManager {
         } else {
             None
         }
+    }
+    
+    /// Creates a new ingredient and writes it to the ingredients directory
+    pub fn create_ingredient(&mut self, ingredient: Ingredient) -> Result<(), CookbookError> {
+        if self.ingredients.contains_key(&ingredient.name) {
+            return Err(CookbookError::UpdateError(format!(
+                "create_ingredient: Ingredient '{}' already exists",
+                ingredient.name
+            )));
+        }
+        let ingredients_dir = self.data_dir.join("ingredients");
+        let path = ingredients_dir.join(format!("{}.yaml", ingredient.name.replace(" ", "_")));
+        ingredient.to_file(&path)?;
+        self.ingredients.insert(ingredient.name.clone(), ingredient);
+        Ok(())
     }
 }

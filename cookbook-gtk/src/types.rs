@@ -36,6 +36,8 @@ pub enum AppMsg {
     ), // (original_name, new_ingredient, quantity, quantity_type, remove_from_pantry)
     UpdateRecipe(String, cookbook_engine::Recipe), // (original_title, new_recipe)
     ClearError,
+    AddIngredient, // Triggers the add ingredient dialog
+    ReloadPantry, // Explicitly reload pantry data and UI
 }
 
 /// The main application model representing the application state
