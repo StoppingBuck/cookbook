@@ -29,6 +29,7 @@ use std::rc::Rc; // Import Rc for reference counting // Import extension traits 
 
 // Define the dialogs module
 mod dialogs;
+mod kb;
 mod pantry;
 mod recipes;
 
@@ -1736,105 +1737,30 @@ impl SimpleComponent for AppModel {
         if self.current_tab == Tab::KnowledgeBase {
             // Select the correct KB entry in the list box
             if let Some(kb_slug) = &self.selected_kb_entry {
-                if let Some(ref dm) = self.data_manager {
-                    let entries = dm.get_all_kb_entries();
-
-                    // Find the index of the selected KB entry
-                    if let Some(index) = entries.iter().position(|entry| entry.slug == *kb_slug) {
-                        // Get the row at that index
-                        if let Some(row) = widgets.kb_list_box.row_at_index(index as i32) {
-                            // Select the row (this will highlight it in the UI)
-                            widgets.kb_list_box.select_row(Some(&row));
-                        }
-                    }
-
-                    // Update details view
-                    // Clear previous content
-                    while let Some(child) = widgets.kb_details.first_child() {
-                        widgets.kb_details.remove(&child);
-                    }
-
-                    // Find the selected KB entry
-                    if let Some(kb_entry) = dm.get_kb_entry(kb_slug) {
-                        // Create a scrollable container for the KB entry details
-                        let entry_details_scroll = gtk::ScrolledWindow::new();
-                        entry_details_scroll.set_hexpand(true);
-                        entry_details_scroll.set_vexpand(true);
-
-                        let details_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
-                        details_container.set_margin_all(10);
-
-                        // Title
-                        let title = gtk::Label::new(None);
-                        title.set_markup(&format!(
-                            "<span size='x-large' weight='bold'>{}</span>",
-                            kb_entry.title
-                        ));
-                        title.set_halign(gtk::Align::Start);
-                        title.set_margin_bottom(10);
-                        details_container.append(&title);
-
-                        // Image (if available)
-                        if let Some(image_name) = &kb_entry.image {
-                            // Construct path to image file in the data directory's kb folder
-                            // Images are stored alongside KB entries in the data/kb directory
-                            let image_path = self.data_dir.join("kb").join(image_name);
-                            if image_path.exists() {
-                                // Use gtk::Image for compatibility
-                                let image = gtk::Image::from_file(&image_path);
-                                image.set_halign(gtk::Align::Center);
-                                image.set_margin_bottom(15);
-                                details_container.append(&image);
-                            } else {
-                                eprintln!("Image not found: {:?}", image_path);
-
-                                // Add a placeholder image or text
-                                let missing_label = gtk::Label::new(Some("Image not available"));
-                                missing_label.set_halign(gtk::Align::Center);
-                                missing_label.set_margin_bottom(15);
-                                details_container.append(&missing_label);
-                            }
-                        }
-
-                        // Content (formatted as markdown)
-                        let content_text = gtk::Label::new(Some(&kb_entry.content));
-                        content_text.set_halign(gtk::Align::Start);
-                        content_text.set_wrap(true);
-                        content_text.set_xalign(0.0);
-                        content_text.set_use_markup(true); // Allow basic HTML-like formatting
-                        details_container.append(&content_text);
-
-                        entry_details_scroll.set_child(Some(&details_container));
-                        widgets.kb_details.append(&entry_details_scroll);
-                    } else {
-                        // KB entry not found
-                        let not_found_label = gtk::Label::new(Some(&format!(
-                            "Knowledge Base entry '{}' not found",
-                            kb_slug
-                        )));
-                        not_found_label.set_halign(gtk::Align::Center);
-                        not_found_label.set_valign(gtk::Align::Center);
-                        widgets.kb_details.append(&not_found_label);
-                    }
-                } else {
-                    // Data manager not available
-                    let error_label = gtk::Label::new(Some(
-                        "Unable to load KB entry: data manager not available",
-                    ));
-                    error_label.set_halign(gtk::Align::Center);
-                    error_label.set_valign(gtk::Align::Center);
-                    widgets.kb_details.append(&error_label);
-                }
+                // Update the selection in the list
+                kb::select_kb_entry_in_list(&widgets.kb_list_box, kb_slug);
+                
+                // Update the details view
+                kb::update_kb_details::<Self>(
+                    &widgets.kb_details,
+                    &self.data_manager,
+                    kb_slug,
+                    &self.data_dir,
+                );
             } else {
-                // No KB entry selected
-                while let Some(child) = widgets.kb_details.first_child() {
-                    widgets.kb_details.remove(&child);
-                }
-
-                let select_label = gtk::Label::new(Some("Select an item to view details"));
-                select_label.set_halign(gtk::Align::Center);
-                select_label.set_valign(gtk::Align::Center);
-                widgets.kb_details.append(&select_label);
+                // No KB entry selected, show placeholder
+                kb::show_kb_details_placeholder(&widgets.kb_details);
+            }
+            
+            // Update the KB list if needed
+            // Only do this when first switching to the tab to avoid unnecessary rebuilds
+            if self.current_tab != Tab::KnowledgeBase {
+                kb::update_kb_list(
+                    &widgets.kb_list_box,
+                    &self.data_manager,
+                    &sender,
+                    AppMsg::SelectKnowledgeBaseEntry,
+                );
             }
         }
 

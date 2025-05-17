@@ -516,6 +516,18 @@ impl DataManager {
     pub fn get_all_kb_entries(&self) -> Vec<&KnowledgeBaseEntry> {
         self.kb_entries.values().collect()
     }
+
+    // Add this method to the DataManager impl section
+    /// Returns all ingredients that reference a specific KB entry by slug
+    pub fn get_ingredients_with_kb_reference(&self, kb_slug: &str) -> Vec<&Ingredient> {
+        self.ingredients
+            .values()
+            .filter(|ingredient| {
+                // Check if the ingredient has a KB reference that matches the slug
+                ingredient.kb.as_ref().map_or(false, |slug| slug == kb_slug)
+            })
+            .collect()
+    }
     
     /// Returns all recipes that use the specified ingredient
     pub fn get_recipes_with_ingredient(&self, ingredient_name: &str) -> Vec<&Recipe> {

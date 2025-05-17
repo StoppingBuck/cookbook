@@ -1,0 +1,229 @@
+use cookbook_engine::DataManager;
+use gtk::prelude::*;
+use relm4::gtk;
+use relm4::ComponentSender;
+use relm4::RelmWidgetExt;
+use std::path::Path;
+use std::rc::Rc;
+
+/// Updates the KB entry list based on search text and other filters
+pub fn update_kb_list<C>(
+    kb_list_box: &gtk::ListBox,
+    data_manager: &Option<Rc<DataManager>>,
+    sender: &ComponentSender<C>,
+    select_kb_entry_msg: impl Fn(String) -> C::Input + Clone + 'static,
+) where
+    C: relm4::Component,
+{
+    // Clear the KB list
+    while let Some(child) = kb_list_box.first_child() {
+        kb_list_box.remove(&child);
+    }
+
+    if let Some(ref dm) = data_manager {
+        let entries = dm.get_all_kb_entries();
+        if !entries.is_empty() {
+            // Sort entries by title for better usability
+            let mut sorted_entries = entries.clone();
+            sorted_entries.sort_by(|a, b| a.title.cmp(&b.title));
+
+            for entry in sorted_entries {
+                let row = gtk::ListBoxRow::new();
+                let title_label = gtk::Label::new(Some(&entry.title));
+                title_label.set_halign(gtk::Align::Start);
+                title_label.set_margin_start(5);
+                title_label.set_margin_end(5);
+                title_label.set_margin_top(5);
+                title_label.set_margin_bottom(5);
+                row.set_child(Some(&title_label));
+
+                kb_list_box.append(&row);
+                
+                // Store the slug in the row's data to make retrieval easier
+                row.set_widget_name(&entry.slug);
+            }
+            
+            // Set up row selection handler
+            let sender_clone = sender.clone();
+            let select_msg = select_kb_entry_msg.clone();
+            kb_list_box.connect_row_selected(move |_, row_opt| {
+                if let Some(row) = row_opt {
+                    let slug = row.widget_name().to_string();
+                    sender_clone.input(select_msg(slug));
+                }
+            });
+        } else {
+            let no_entries_row = gtk::ListBoxRow::new();
+            let no_entries_label = gtk::Label::new(Some("No KB entries available"));
+            no_entries_label.set_margin_all(10);
+            no_entries_row.set_child(Some(&no_entries_label));
+            kb_list_box.append(&no_entries_row);
+        }
+    } else {
+        let no_data_row = gtk::ListBoxRow::new();
+        let no_data_label = gtk::Label::new(Some("Failed to load KB data"));
+        no_data_label.set_margin_all(10);
+        no_data_row.set_child(Some(&no_data_label));
+        kb_list_box.append(&no_data_row);
+    }
+}
+
+/// Builds and returns the KB entry detail view for a selected entry
+pub fn build_kb_detail_view(
+    data_manager: &Rc<DataManager>,
+    kb_slug: &str,
+    data_dir: &Path,
+) -> gtk::ScrolledWindow {
+    let kb_details_scroll = gtk::ScrolledWindow::new();
+    kb_details_scroll.set_hexpand(true);
+    kb_details_scroll.set_vexpand(true);
+
+    // Find the selected KB entry
+    if let Some(kb_entry) = data_manager.get_kb_entry(kb_slug) {
+        let details_container = gtk::Box::new(gtk::Orientation::Vertical, 10);
+        details_container.set_margin_all(10);
+
+        // Title
+        let title = gtk::Label::new(None);
+        title.set_markup(&format!(
+            "<span size='x-large' weight='bold'>{}</span>",
+            kb_entry.title
+        ));
+        title.set_halign(gtk::Align::Start);
+        title.set_margin_bottom(10);
+        details_container.append(&title);
+
+        // Image (if available)
+        if let Some(image_name) = &kb_entry.image {
+            // Construct path to image file in the data directory's kb folder
+            let image_path = data_dir.join("kb").join(image_name);
+            if image_path.exists() {
+                let image = gtk::Image::from_file(&image_path);
+                image.set_halign(gtk::Align::Center);
+                image.set_margin_bottom(15);
+                details_container.append(&image);
+            } else {
+                eprintln!("Image not found: {:?}", image_path);
+
+                // Add a placeholder for missing image
+                let missing_label = gtk::Label::new(Some("Image not available"));
+                missing_label.set_halign(gtk::Align::Center);
+                missing_label.set_margin_bottom(15);
+                details_container.append(&missing_label);
+            }
+        }
+
+        // Related ingredients section (if any)
+        let related_ingredients = data_manager.get_ingredients_with_kb_reference(kb_slug);
+        if !related_ingredients.is_empty() {
+            let related_label = gtk::Label::new(None);
+            related_label.set_markup("<span weight='bold'>Related Ingredients:</span>");
+            related_label.set_halign(gtk::Align::Start);
+            related_label.set_margin_top(5);
+            related_label.set_margin_bottom(5);
+            details_container.append(&related_label);
+            
+            let ingredients_box = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+            ingredients_box.set_margin_start(10);
+            ingredients_box.set_margin_bottom(10);
+            
+            for ingredient in related_ingredients {
+                let ingredient_chip = gtk::Button::with_label(&ingredient.name);
+                ingredient_chip.add_css_class("tag");
+                ingredients_box.append(&ingredient_chip);
+            }
+            
+            details_container.append(&ingredients_box);
+            details_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        }
+
+        // Content (formatted as markdown)
+        let content_text = gtk::Label::new(Some(&kb_entry.content));
+        content_text.set_halign(gtk::Align::Start);
+        content_text.set_wrap(true);
+        content_text.set_xalign(0.0);
+        content_text.set_use_markup(true); // Allow basic HTML-like formatting
+        details_container.append(&content_text);
+
+        kb_details_scroll.set_child(Some(&details_container));
+    } else {
+        // KB entry not found
+        let not_found_label = gtk::Label::new(Some(&format!(
+            "Knowledge Base entry '{}' not found", 
+            kb_slug
+        )));
+        not_found_label.set_halign(gtk::Align::Center);
+        not_found_label.set_valign(gtk::Align::Center);
+        kb_details_scroll.set_child(Some(&not_found_label));
+    }
+    
+    kb_details_scroll
+}
+
+/// Updates the KB details view with the selected entry
+pub fn update_kb_details<C>(
+    kb_details: &gtk::Box,
+    data_manager: &Option<Rc<DataManager>>,
+    kb_slug: &str,
+    data_dir: &Path,
+) where
+    C: relm4::Component,
+{
+    // Clear previous content
+    while let Some(child) = kb_details.first_child() {
+        kb_details.remove(&child);
+    }
+
+    if let Some(ref dm) = data_manager {
+        let kb_details_scroll = build_kb_detail_view(dm, kb_slug, data_dir);
+        kb_details.append(&kb_details_scroll);
+    } else {
+        // Data manager not available
+        let error_label = gtk::Label::new(Some(
+            "Unable to load KB entry: data manager not available",
+        ));
+        error_label.set_halign(gtk::Align::Center);
+        error_label.set_valign(gtk::Align::Center);
+        kb_details.append(&error_label);
+    }
+}
+
+/// Shows a placeholder when no KB entry is selected
+pub fn show_kb_details_placeholder(kb_details: &gtk::Box) {
+    // Clear previous content
+    while let Some(child) = kb_details.first_child() {
+        kb_details.remove(&child);
+    }
+
+    let select_label = gtk::Label::new(Some("Select an item to view details"));
+    select_label.set_halign(gtk::Align::Center);
+    select_label.set_valign(gtk::Align::Center);
+    kb_details.append(&select_label);
+}
+
+/// Helper function to select the correct KB entry in the list box
+pub fn select_kb_entry_in_list(kb_list_box: &gtk::ListBox, kb_slug: &str) {
+    // First try to find by widget name (which should contain the slug)
+    let mut i = 0;
+    while let Some(row) = kb_list_box.row_at_index(i) {
+        i += 1;
+        if row.widget_name() == kb_slug {
+            kb_list_box.select_row(Some(&row));
+            return;
+        }
+    }
+    
+    // If that fails, try with the label text (backward compatibility)
+    i = 0;
+    while let Some(row) = kb_list_box.row_at_index(i) {
+        i += 1;
+        if let Some(child) = row.child() {
+            if let Some(label) = child.downcast_ref::<gtk::Label>() {
+                if label.text() == kb_slug {
+                    kb_list_box.select_row(Some(&row));
+                    return;
+                }
+            }
+        }
+    }
+}
