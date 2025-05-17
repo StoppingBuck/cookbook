@@ -16,6 +16,7 @@ Servings: 4
 Tags:
 - side
 - vegetarian
+image: Mashed_Potatoes.jpg
 ---
 Boil potatoes. Mash with milk and butter until smooth.
 Get a nervous breakdown.

@@ -1,5 +1,7 @@
 > This file exists to help GitHub Copilot understand the structure, purpose and intended behavior of the `cookbook` project. It may also help human collaborators get oriented faster.
 
+# Important
+Ignore the target/ directory and any other build artifacts. They are not part of the project and should not be modified or included in any commits. The only files that should be modified are those in the src/ directory and the example/data/ directory.
 
 # Quick note about the Agent mode
 Whenever you execute commands in Agent mode, sometimes the process will 'hang' - either because it is supposed to stay active or because the command just doesn't exit properly. Either way, that often results in you hanging. 

@@ -5,6 +5,7 @@ use relm4::gtk;
 use relm4::ComponentSender;
 use relm4::RelmWidgetExt;
 use std::rc::Rc;
+use std::cell::RefCell;
 
 use crate::types::AppModel;
 use crate::types::AppMsg;
@@ -134,6 +135,33 @@ where
         let recipe_box = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
         recipe_box.set_margin_all(DETAILS_MARGIN);
 
+        // IMAGE SECTION
+        let image_frame = gtk::Frame::new(None);
+        image_frame.set_margin_bottom(HEADER_MARGIN);
+        image_frame.set_hexpand(true);
+        image_frame.set_vexpand(false);
+        let image_widget = if let Some(image_name) = &recipe.image {
+            let data_dir = data_manager.get_data_dir();
+            let img_path = data_dir.join("recipes/img").join(image_name);
+            if img_path.exists() {
+                let img = gtk::Image::from_file(img_path);
+                img.set_pixel_size(200);
+                img.set_halign(gtk::Align::Center);
+                img.set_valign(gtk::Align::Start);
+                img.upcast::<gtk::Widget>()
+            } else {
+                let missing = gtk::Label::new(Some("No image available"));
+                missing.set_halign(gtk::Align::Center);
+                missing.upcast::<gtk::Widget>()
+            }
+        } else {
+            let missing = gtk::Label::new(Some("No image available"));
+            missing.set_halign(gtk::Align::Center);
+            missing.upcast::<gtk::Widget>()
+        };
+        image_frame.set_child(Some(&image_widget));
+        recipe_box.append(&image_frame);
+
         // Header with title and edit button
         let header_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
 
@@ -250,7 +278,6 @@ where
                     .collect::<Vec<String>>()
             })
             .unwrap_or_default();
-
         for ingredient in &recipe.ingredients {
             let ingredient_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
             ingredient_box.set_margin_bottom(LIST_ROW_MARGIN);
@@ -299,14 +326,13 @@ where
         ingredients_frame.set_child(Some(&ingredients_list));
         recipe_box.append(&ingredients_frame);
 
-        // Instructions section
+        // Instructions section (for details view, not edit dialog!)
         let instructions_header = gtk::Label::new(None);
         instructions_header.set_markup("<span size='large' weight='bold'>Instructions</span>");
         instructions_header.set_halign(gtk::Align::Start);
         instructions_header.set_margin_bottom(LIST_ROW_MARGIN);
         recipe_box.append(&instructions_header);
 
-        // Instructions text
         let instructions_frame = gtk::Frame::new(None);
         let instructions_text = gtk::Label::new(Some(&recipe.instructions));
         instructions_text.set_wrap(true);
@@ -370,6 +396,8 @@ pub fn show_edit_recipe_dialog(
     sender: ComponentSender<crate::types::AppModel>,
     recipe_title: String,
 ) {
+    let selected_image_path: Rc<RefCell<Option<std::path::PathBuf>>> = Rc::new(RefCell::new(None));
+
     let dialog = gtk::Dialog::new();
     dialog.set_title(Some(&format!("Edit Recipe: {}", recipe_title)));
     dialog.set_modal(true);
@@ -407,7 +435,6 @@ pub fn show_edit_recipe_dialog(
     title_entry.set_hexpand(true);
     title_box.append(&title_label);
     title_box.append(&title_entry);
-    content_area.append(&title_box);
 
     // Prep time field
     let prep_time_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
@@ -421,7 +448,6 @@ pub fn show_edit_recipe_dialog(
     prep_time_entry.set_hexpand(true);
     prep_time_box.append(&prep_time_label);
     prep_time_box.append(&prep_time_entry);
-    content_area.append(&prep_time_box);
 
     // Downtime field
     let downtime_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
@@ -435,7 +461,6 @@ pub fn show_edit_recipe_dialog(
     downtime_entry.set_hexpand(true);
     downtime_box.append(&downtime_label);
     downtime_box.append(&downtime_entry);
-    content_area.append(&downtime_box);
 
     // Servings field
     let servings_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
@@ -449,7 +474,6 @@ pub fn show_edit_recipe_dialog(
     servings_entry.set_hexpand(true);
     servings_box.append(&servings_label);
     servings_box.append(&servings_entry);
-    content_area.append(&servings_box);
 
     // Tags field (comma-separated)
     let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
@@ -461,16 +485,15 @@ pub fn show_edit_recipe_dialog(
     tags_entry.set_hexpand(true);
     tags_box.append(&tags_label);
     tags_box.append(&tags_entry);
-    content_area.append(&tags_box);
 
     // Separator
-    content_area.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
 
     // Ingredients section heading
     let ingredients_label = gtk::Label::new(Some("Ingredients"));
     ingredients_label.set_markup("<span weight='bold'>Ingredients</span>");
     ingredients_label.set_halign(gtk::Align::Start);
-    content_area.append(&ingredients_label);
+    form_container.append(&ingredients_label);
 
     // Ingredients container (will hold ingredient rows)
     let ingredients_container = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
@@ -625,12 +648,6 @@ pub fn show_edit_recipe_dialog(
         ingredients_container_ref.append(&row);
     });
 
-    form_container.append(&ingredients_container);
-    form_container.append(&add_ingredient_button);
-
-    // Separator before instructions
-    form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-
     // Instructions section
     let instructions_label = gtk::Label::new(Some("Instructions"));
     instructions_label.set_markup("<span weight='bold'>Instructions</span>");
@@ -641,19 +658,78 @@ pub fn show_edit_recipe_dialog(
     instructions_text_view.set_wrap_mode(gtk::WrapMode::Word);
     instructions_text_view.set_vexpand(true);
     instructions_text_view.set_hexpand(true);
-    instructions_text_view
-        .buffer()
-        .set_text(&recipe.instructions);
+    instructions_text_view.buffer().set_text(&recipe.instructions);
+    form_container.append(&instructions_text_view);
 
-    let instructions_scroll = gtk::ScrolledWindow::new();
-    instructions_scroll.set_vexpand(true);
-    instructions_scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
-    instructions_scroll.set_child(Some(&instructions_text_view));
-    form_container.append(&instructions_scroll);
+    // Image section
+    let image_section = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
+    let image_preview = if let Some(image_name) = &recipe.image {
+        if let Some(dm) = &data_manager {
+            let data_dir = dm.get_data_dir();
+            let img_path = data_dir.join("recipes/img").join(image_name);
+            if img_path.exists() {
+                let img = gtk::Image::from_file(img_path);
+                img.set_pixel_size(64);
+                img
+            } else {
+                gtk::Image::new()
+            }
+        } else {
+            gtk::Image::new()
+        }
+    } else {
+        gtk::Image::new()
+    };
+    image_section.append(&image_preview);
+    let set_image_button = gtk::Button::with_label("Set Image");
+    let selected_image_path_clone = selected_image_path.clone();
+    set_image_button.connect_clicked(move |_| {
+        let file_chooser = gtk::FileChooserNative::new(
+            Some("Select Recipe Image"),
+            None::<&gtk::Window>,
+            gtk::FileChooserAction::Open,
+            Some("Open"),
+            Some("Cancel"),
+        );
+        file_chooser.set_modal(true);
+        let selected_image_path_clone_inner = selected_image_path_clone.clone();
+        file_chooser.connect_response(move |dialog, response| {
+            if response == gtk::ResponseType::Accept {
+                if let Some(file) = dialog.file() {
+                    if let Some(path) = file.path() {
+                        *selected_image_path_clone_inner.borrow_mut() = Some(path);
+                    }
+                }
+            }
+            dialog.destroy();
+        });
+        file_chooser.show();
+    });
+    image_section.append(&set_image_button);
+    form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    form_container.append(&image_section);
+
+    // Append all field widgets to form_container in the correct order
+    form_container.append(&title_box);
+    form_container.append(&prep_time_box);
+    form_container.append(&downtime_box);
+    form_container.append(&servings_box);
+    form_container.append(&tags_box);
+    form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    form_container.append(&ingredients_label);
+    form_container.append(&ingredients_container);
+    form_container.append(&add_ingredient_button);
+    form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    form_container.append(&image_section); // Move image section before instructions
+    form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    form_container.append(&instructions_label);
+    form_container.append(&instructions_text_view);
 
     scrolled_window.set_child(Some(&form_container));
     content_area.append(&scrolled_window);
 
+    // Clone image field to avoid borrow checker issues in closure
+    let recipe_image_field = recipe.image.clone();
     // Clones for closure
     let sender_clone = sender.clone();
     let recipe_title_clone = recipe_title.clone();
@@ -729,6 +805,22 @@ pub fn show_edit_recipe_dialog(
                 )
                 .to_string();
 
+            // Handle image copy if a new image was selected
+            let mut image_field: Option<String> = recipe_image_field.clone();
+            if let Some(selected_path) = selected_image_path.borrow().as_ref() {
+                if let Some(dm) = &data_manager_clone {
+                    let data_dir = dm.get_data_dir();
+                    let img_dir = data_dir.join("recipes/img");
+                    let ext = selected_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                    let safe_title = title_entry.text().replace(' ', "_");
+                    let new_filename = format!("{}.{}", safe_title, ext);
+                    let dest_path = img_dir.join(&new_filename);
+                    let _ = std::fs::create_dir_all(&img_dir);
+                    let _ = std::fs::copy(selected_path, &dest_path);
+                    image_field = Some(new_filename);
+                }
+            }
+
             let new_recipe = cookbook_engine::Recipe {
                 title: new_title,
                 ingredients,
@@ -736,6 +828,7 @@ pub fn show_edit_recipe_dialog(
                 downtime,
                 servings,
                 tags: if tags.is_empty() { None } else { Some(tags) },
+                image: image_field,
                 instructions,
             };
 

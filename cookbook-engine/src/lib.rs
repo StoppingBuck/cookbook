@@ -48,6 +48,9 @@ pub struct Recipe {
     #[serde(rename = "Tags")]
     pub tags: Option<Vec<String>>,
     
+    #[serde(rename = "image")]
+    pub image: Option<String>,
+    
     #[serde(skip)]
     pub instructions: String,
 }
@@ -176,6 +179,7 @@ impl Recipe {
             downtime: self.downtime,
             servings: self.servings,
             tags: self.tags.clone(),
+            image: self.image.clone(),
             instructions: String::new(), // Empty string since it's excluded via #[serde(skip)]
         };
         
