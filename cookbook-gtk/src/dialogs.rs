@@ -1,0 +1,80 @@
+
+use gtk::prelude::*;
+use relm4::gtk;
+use relm4::ComponentSender;
+
+/// Shows the About dialog for the Cookbook application.
+/// 
+/// # Arguments
+/// * `parent_window` - The parent window for the dialog
+/// * `sender` - The component sender to use for sending messages
+/// * `reset_message` - The message to send when the dialog should be closed
+pub fn show_about_dialog<Msg, C>(
+    parent_window: &gtk::ApplicationWindow,
+    sender: &ComponentSender<C>,
+    reset_message: Msg,
+) where
+    C: relm4::Component<Input = Msg>,
+    Msg: Clone + 'static,
+{
+    // Create and show the dialog
+    let about_dialog = gtk::AboutDialog::builder()
+        .program_name("Cookbook")
+        .version("0.1.0")
+        .copyright("© 2025 Cookbook Team")
+        .comments("A cross-platform recipe and pantry manager")
+        .website("https://github.com/cookbook")
+        .website_label("GitHub Repository")
+        .license("MIT License")
+        .transient_for(parent_window)
+        .build();
+    
+    // Reset the flag immediately after creating the dialog
+    sender.input(reset_message.clone());
+    
+    // Also reset when dialog is hidden as a safety measure
+    let sender_clone = sender.clone();
+    let reset_message_clone = reset_message.clone();
+    about_dialog.connect_hide(move |_| {
+        sender_clone.input(reset_message_clone.clone());
+    });
+    
+    about_dialog.present();
+}
+
+/// Shows the Help dialog for the Cookbook application.
+/// 
+/// # Arguments
+/// * `parent_window` - The parent window for the dialog
+/// * `sender` - The component sender to use for sending messages
+/// * `reset_message` - The message to send when the dialog should be closed
+pub fn show_help_dialog<Msg, C>(
+    parent_window: &gtk::ApplicationWindow,
+    sender: &ComponentSender<C>,
+    reset_message: Msg,
+) where
+    C: relm4::Component<Input = Msg>,
+    Msg: Clone + 'static,
+{
+    // Create and show the dialog
+    let help_dialog = gtk::MessageDialog::builder()
+        .title("Cookbook Help")
+        .text("Help documentation will be implemented in a future version.")
+        .modal(true)
+        .buttons(gtk::ButtonsType::Ok)
+        .transient_for(parent_window)
+        .build();
+    
+    // Reset the flag immediately after creating the dialog
+    sender.input(reset_message.clone());
+    
+    // Also reset when dialog is closed as a safety measure
+    let sender_clone = sender.clone();
+    let reset_message_clone = reset_message.clone();
+    help_dialog.connect_response(move |dialog, _| {
+        dialog.close();
+        sender_clone.input(reset_message_clone.clone());
+    });
+    
+    help_dialog.present();
+}
