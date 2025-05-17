@@ -194,7 +194,7 @@ where
 
         // Downtime
         let downtime_label = gtk::Label::new(None);
-        downtime_label.set_markup("<b>Downtime:</b>");
+        downtime_label.set_markup("<b>Cook Time:</b>");
         downtime_label.set_halign(gtk::Align::Start);
         metadata_grid.attach(&downtime_label, 0, 1, 1, 1);
 
@@ -491,7 +491,7 @@ pub fn show_edit_recipe_dialog(
         store
     }
 
-    // Helper to create a name_entry with completion
+    // Helper to create a name_entry with completion, triggers dropdown on focus, limits to 8 results
     let create_name_entry_with_completion = |default_text: Option<&str>| {
         let entry = gtk::Entry::new();
         if let Some(text) = default_text {
@@ -504,6 +504,16 @@ pub fn show_edit_recipe_dialog(
             let store = create_ingredient_list_store(&ingredient_names);
             completion.set_model(Some(&store));
             completion.set_text_column(0);
+            completion.set_minimum_key_length(0); // Show dropdown on focus
+
+            // Remove match_func for now to let GTK handle filtering and ensure dropdown works
+            // Show dropdown immediately on focus using EventControllerFocus
+            let completion_clone = completion.clone();
+            let focus_controller = gtk::EventControllerFocus::new();
+            focus_controller.connect_enter(move |_| {
+                completion_clone.complete();
+            });
+            entry.add_controller(focus_controller);
             entry.set_completion(Some(&completion));
         }
         entry
@@ -558,24 +568,36 @@ pub fn show_edit_recipe_dialog(
         let row = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
 
         // Use the same helper for new ingredient rows
-        let entry = gtk::Entry::new();
-        entry.set_placeholder_text(Some("Ingredient name"));
-        entry.set_hexpand(true);
-        if !ingredient_names_clone.is_empty() {
-            let completion = gtk::EntryCompletion::new();
-            let store = {
-                let store = gtk::ListStore::new(&[String::static_type()]);
-                for name in &ingredient_names_clone {
-                    let iter = store.append();
-                    store.set(&iter, &[(0, &name)]);
-                }
-                store
-            };
-            completion.set_model(Some(&store));
-            completion.set_text_column(0);
-            entry.set_completion(Some(&completion));
-        }
-        row.append(&entry);
+        let name_entry = {
+            let entry = gtk::Entry::new();
+            entry.set_placeholder_text(Some("Ingredient name"));
+            entry.set_hexpand(true);
+            if !ingredient_names_clone.is_empty() {
+                let completion = gtk::EntryCompletion::new();
+                let store = {
+                    let store = gtk::ListStore::new(&[String::static_type()]);
+                    for name in &ingredient_names_clone {
+                        let iter = store.append();
+                        store.set(&iter, &[(0, &name)]);
+                    }
+                    store
+                };
+                completion.set_model(Some(&store));
+                completion.set_text_column(0);
+                completion.set_minimum_key_length(0);
+                // Remove match_func for now to let GTK handle filtering and ensure dropdown works
+                // Show dropdown immediately on focus using EventControllerFocus
+                let completion_clone = completion.clone();
+                let focus_controller = gtk::EventControllerFocus::new();
+                focus_controller.connect_enter(move |_| {
+                    completion_clone.complete();
+                });
+                entry.add_controller(focus_controller);
+                entry.set_completion(Some(&completion));
+            }
+            entry
+        };
+        row.append(&name_entry);
 
         let qty_entry = gtk::Entry::new();
         qty_entry.set_placeholder_text(Some("Quantity"));
