@@ -589,18 +589,18 @@ impl SimpleComponent for AppModel {
             );
         }
 
-        // Update recipes list when search text changes
-        recipes::update_recipes_list(
-            &widgets.recipes_list_box,
-            &self.data_manager,
-            &self.search_text,
-            &sender,
-            AppMsg::SelectRecipe,
-        );
-
         // Update recipes list and details when ReloadRecipes is triggered
         if self.current_tab == Tab::Recipes {
             recipes::refresh_recipes_ui(self, widgets, &sender);
+        } else {
+            // Only update the recipes list if not already handled by refresh_recipes_ui
+            recipes::update_recipes_list(
+                &widgets.recipes_list_box,
+                &self.data_manager,
+                &self.search_text,
+                &sender,
+                AppMsg::SelectRecipe,
+            );
         }
 
         if let Some(ref msg) = self.error_message {

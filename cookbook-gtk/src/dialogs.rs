@@ -24,7 +24,8 @@ pub fn show_about_dialog<Msg, C>(
         .comments("A cross-platform recipe and pantry manager")
         .website("https://github.com/cookbook")
         .website_label("GitHub Repository")
-        .license("MIT License")
+        .license("MIT OR Apache-2.0")
+        .license_type(gtk::License::MitX11)
         .transient_for(parent_window)
         .build();
 
