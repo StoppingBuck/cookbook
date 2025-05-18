@@ -183,7 +183,7 @@ impl SimpleComponent for AppModel {
             pantry_label: pantry_title.clone(), // Use pantry_title instead of pantry_label
             pantry_list: pantry_list_container, // Store the pantry list container
             pantry_details: pantry_details_box, // Use pantry_details_box instead of pantry_details
-            // pantry_category_filters: category_filters_box, // REMOVED
+            // pantry_category_filters: category_filters_box; // REMOVED
             pantry_in_stock_switch: stock_filter_switch, // Store in-stock filter switch
             kb_label: kb_label.clone(),
             kb_list_box: kb_list_box, // Store the KB list box
@@ -441,6 +441,10 @@ impl SimpleComponent for AppModel {
                         }
                     }
                 }
+            }
+            // Message: User clicks the refresh button for category popover
+            AppMsg::RefreshCategoryPopover => {
+                // No model state to update, but force update_view to run
             }
             AppMsg::ClearError => {
                 self.error_message = None;

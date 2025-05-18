@@ -42,6 +42,7 @@ pub enum AppMsg {
     DeleteRecipe(String), // Deletes a recipe by title
     ReloadRecipes, // Explicitly reload recipes data and UI
     CreateRecipe(cookbook_engine::Recipe), // Add a new recipe
+    RefreshCategoryPopover, // Triggers a manual refresh of the category filter popover
 }
 
 /// The main application model representing the application state

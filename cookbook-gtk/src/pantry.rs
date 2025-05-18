@@ -792,51 +792,72 @@ pub fn build_pantry_tab(
     category_filters_label.set_halign(gtk::Align::Start);
     category_filters_label.set_margin_bottom(LIST_ROW_MARGIN);
 
-    // Button to open popover
+    // Button to open popover (static, not recreated)
     let filter_button = gtk::Button::with_label("Filter Categories");
     filter_button.set_halign(gtk::Align::Start);
     filter_button.set_tooltip_text(Some("Filter by one or more categories"));
 
-    // Remove static popover: instead, create it dynamically on click
-    let sender_for_popover = sender.clone();
-    let model_for_popover = model.clone();
-    let filter_button_clone = filter_button.clone();
-    // Always fetch latest categories and selected state before connecting the closure
+    // Popover for category filters (static)
+    let popover = gtk::Popover::new();
+    popover.set_parent(&filter_button);
+    let popover_box = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
+    popover_box.set_margin_all(DEFAULT_MARGIN);
+    popover_box.set_vexpand(true);
+    let scroll = gtk::ScrolledWindow::new();
+    scroll.set_min_content_height(180);
+    scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+    let listbox = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
+    scroll.set_child(Some(&listbox));
+    popover_box.append(&scroll);
+    popover.set_child(Some(&popover_box));
+
+    // Function to refresh the listbox contents
+    let refresh_categories = {
+        let listbox = listbox.clone();
+        let sender = sender.clone();
+        move |categories: Vec<String>, selected_categories: Vec<String>| {
+            // Remove all children
+            while let Some(child) = listbox.first_child() {
+                listbox.remove(&child);
+            }
+            for category in &categories {
+                let check = gtk::CheckButton::with_label(category);
+                check.set_active(selected_categories.contains(category));
+                let sender_clone = sender.clone();
+                let category_clone = category.clone();
+                check.connect_toggled(move |btn| {
+                    sender_clone.input(AppMsg::TogglePantryCategory(
+                        category_clone.clone(),
+                        btn.is_active(),
+                    ));
+                });
+                listbox.append(&check);
+            }
+        }
+    };
+    // Initial population
     let categories = if let Some(ref dm) = model.data_manager {
         dm.as_ref().get_unique_categories()
     } else {
         Vec::new()
     };
     let selected_categories = model.selected_pantry_categories.clone();
-    let sender_for_popover = sender.clone();
-    filter_button.connect_clicked(move |btn| {
-        // Always create a new popover and content
-        let popover = gtk::Popover::new();
-        popover.set_parent(btn); // Pass btn directly as &Button
-        let popover_box = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
-        popover_box.set_margin_all(DEFAULT_MARGIN);
-        popover_box.set_vexpand(true);
-        let scroll = gtk::ScrolledWindow::new();
-        scroll.set_min_content_height(180);
-        scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
-        let listbox = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
-        for category in &categories {
-            let check = gtk::CheckButton::with_label(category);
-            check.set_active(selected_categories.contains(category));
-            let sender_clone = sender_for_popover.clone();
-            let category_clone = category.clone();
-            check.connect_toggled(move |btn| {
-                sender_clone.input(AppMsg::TogglePantryCategory(
-                    category_clone.clone(),
-                    btn.is_active(),
-                ));
-            });
-            listbox.append(&check);
-        }
-        scroll.set_child(Some(&listbox));
-        popover_box.append(&scroll);
-        popover.set_child(Some(&popover_box));
+    refresh_categories(categories.clone(), selected_categories.clone());
+
+    // Open popover on button click
+    filter_button.connect_clicked(move |_| {
         popover.popup();
+    });
+
+    // Add refresh button next to filter_button
+    let refresh_button = gtk::Button::new();
+    let refresh_icon = gtk::Image::from_icon_name("view-refresh-symbolic");
+    refresh_icon.set_pixel_size(16);
+    refresh_button.set_child(Some(&refresh_icon));
+    refresh_button.set_tooltip_text(Some("Refresh category list"));
+    let sender_clone = sender.clone();
+    refresh_button.connect_clicked(move |_| {
+        sender_clone.input(AppMsg::RefreshCategoryPopover);
     });
 
     // Update button label to show number of selected categories
@@ -860,8 +881,12 @@ pub fn build_pantry_tab(
     stock_filter_box.append(&stock_filter_label);
     stock_filter_box.append(&stock_filter_switch);
 
+    // Add filter_button and refresh_button to a horizontal box
+    let filter_buttons_box = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
+    filter_buttons_box.append(&filter_button);
+    filter_buttons_box.append(&refresh_button);
     filters_container.append(&category_filters_label);
-    filters_container.append(&filter_button);
+    filters_container.append(&filter_buttons_box);
     filters_container.append(&stock_filter_box);
 
     filters_frame.set_child(Some(&filters_container));
