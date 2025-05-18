@@ -84,12 +84,12 @@ fn markdown_to_pango(md: &str) -> String {
     for line in md.lines() {
         let trimmed = line.trim();
         // Debug: print each line and what the parser thinks it is
-        println!("[KB DEBUG] markdown_to_pango: line='{}'", trimmed);
+        //println!("[KB DEBUG] markdown_to_pango: line='{}'", trimmed);
         // Detect markdown table lines (start with | or contain only dashes and pipes)
         let is_table_line = trimmed.starts_with('|') ||
             (trimmed.chars().all(|c| c == '|' || c == '-' || c == ' '));
         if is_table_line {
-            println!("[KB DEBUG] Detected table line: {}", trimmed);
+            //println!("[KB DEBUG] Detected table line: {}", trimmed);
             if !in_table {
                 out.push_str("<span font_family='monospace'>");
                 in_table = true;
@@ -107,19 +107,19 @@ fn markdown_to_pango(md: &str) -> String {
         // Headings
         if trimmed.starts_with("### ") {
             let safe = glib::markup_escape_text(&trimmed[4..]);
-            println!("[KB DEBUG] Detected h3: {}", &safe);
+            //println!("[KB DEBUG] Detected h3: {}", &safe);
             pango_line.push_str(&format!("<span size='large' weight='bold'>{}</span>", safe));
         } else if trimmed.starts_with("## ") {
             let safe = glib::markup_escape_text(&trimmed[3..]);
-            println!("[KB DEBUG] Detected h2: {}", &safe);
+            //println!("[KB DEBUG] Detected h2: {}", &safe);
             pango_line.push_str(&format!("<span size='x-large' weight='bold'>{}</span>", safe));
         } else if trimmed.starts_with("# ") {
             let safe = glib::markup_escape_text(&trimmed[2..]);
-            println!("[KB DEBUG] Detected h1: {}", &safe);
+            //println!("[KB DEBUG] Detected h1: {}", &safe);
             pango_line.push_str(&format!("<span size='xx-large' weight='bold'>{}</span>", safe));
         } else if trimmed.starts_with("* ") || trimmed.starts_with("- ") {
             let safe = glib::markup_escape_text(&trimmed[2..]);
-            println!("[KB DEBUG] Detected list item: {}", &safe);
+            //println!("[KB DEBUG] Detected list item: {}", &safe);
             pango_line.push_str(&format!("• {}", safe));
         } else {
             let safe = glib::markup_escape_text(trimmed);

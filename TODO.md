@@ -27,7 +27,7 @@
 - language?
 
 ## About
-- Basic info
+- Done
 
 ## Help
 - Help docs

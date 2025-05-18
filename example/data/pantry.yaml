@@ -28,3 +28,7 @@ items:
   quantity: 1.0
   quantity_type: ''
   last_updated: 2025-05-18
+- ingredient: liquid smoke
+  quantity: null
+  quantity_type: ''
+  last_updated: 2025-05-18
