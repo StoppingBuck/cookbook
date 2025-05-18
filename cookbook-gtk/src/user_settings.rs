@@ -5,6 +5,7 @@ use serde::{Serialize, Deserialize};
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct UserSettings {
     pub language: String,
+    pub data_dir: Option<String>,
 }
 
 impl UserSettings {

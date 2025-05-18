@@ -77,8 +77,8 @@ impl SimpleComponent for AppModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        // Get default data directory
-        let data_dir = match env::var("COOKBOOK_DATA_DIR") {
+        // Get default data directory, or from user settings if set
+        let mut data_dir = match env::var("COOKBOOK_DATA_DIR") {
             // Get the data directory from environment variable
             Ok(path) => PathBuf::from(path), // If the environment variable is set, use it
             Err(_) => {
@@ -90,12 +90,14 @@ impl SimpleComponent for AppModel {
                 path // Return the path
             }
         };
-
         // Load user settings from config file
         let config_path = dirs::config_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
             .join("cookbook-gtk/user_settings.toml");
         let user_settings = UserSettings::load(&config_path);
+        if let Some(ref user_dir) = user_settings.data_dir {
+            data_dir = PathBuf::from(user_dir);
+        }
         let user_settings_rc = std::rc::Rc::new(std::cell::RefCell::new(user_settings));
         let mut model = AppModel {
             data_manager: None,
@@ -182,6 +184,26 @@ impl SimpleComponent for AppModel {
                     // Debug output for UI refresh
                     println!("[DEBUG] UI refresh triggered after language change to: {}", lang);
                     // Trigger a full UI refresh by sending a message
+                    sender.input(AppMsg::ReloadPantry);
+                    sender.input(AppMsg::ReloadRecipes);
+                    sender.input(AppMsg::SwitchTab(Tab::Settings));
+                }
+            },
+            &model.data_dir.display().to_string(),
+            {
+                let user_settings_rc = model.user_settings.clone();
+                let sender = sender.clone();
+                move |new_data_dir: String| {
+                    // Save new data_dir to user settings
+                    let mut user_settings = user_settings_rc.borrow_mut();
+                    user_settings.data_dir = Some(new_data_dir.clone());
+                    let config_path = dirs::config_dir()
+                        .unwrap_or_else(|| std::path::PathBuf::from("."))
+                        .join("cookbook-gtk/user_settings.toml");
+                    user_settings.save(&config_path);
+                    // Validate and create required structure
+                    crate::utils::validate_and_create_data_dir(&new_data_dir);
+                    // Reload DataManager and update model
                     sender.input(AppMsg::ReloadPantry);
                     sender.input(AppMsg::ReloadRecipes);
                     sender.input(AppMsg::SwitchTab(Tab::Settings));

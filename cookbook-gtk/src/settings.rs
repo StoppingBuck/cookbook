@@ -8,6 +8,8 @@ use crate::ui_constants::*;
 pub fn build_settings_tab(
     current_language: &str,
     on_language_change: impl Fn(String) + 'static,
+    current_data_dir: &str,
+    on_data_dir_change: impl Fn(String) + 'static,
 ) -> gtk::Box {
     let settings_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
 
@@ -40,6 +42,51 @@ pub fn build_settings_tab(
 
     settings_container.append(&settings_title);
     settings_container.append(&lang_box);
+
+    // Data directory selector
+    let data_dir_label = gtk::Label::new(Some(&tr("Data directory:")));
+    data_dir_label.set_halign(gtk::Align::Start);
+    data_dir_label.set_margin_start(DEFAULT_MARGIN);
+
+    let data_dir_value = gtk::Label::new(Some(current_data_dir));
+    data_dir_value.set_halign(gtk::Align::Start);
+    data_dir_value.set_margin_start(DEFAULT_MARGIN);
+    data_dir_value.set_selectable(true);
+
+    let data_dir_button = gtk::Button::with_label(&tr("Change..."));
+    let on_data_dir_change = std::rc::Rc::new(on_data_dir_change);
+    let data_dir_value_clone = data_dir_value.clone();
+    let on_data_dir_change_clone = on_data_dir_change.clone();
+    data_dir_button.connect_clicked(move |_| {
+        let dialog = gtk::FileChooserDialog::new(
+            Some(&tr("Select Data Directory")),
+            Some(&gtk::Window::default()),
+            gtk::FileChooserAction::SelectFolder,
+            &[(&tr("Cancel"), gtk::ResponseType::Cancel), (&tr("Select"), gtk::ResponseType::Accept)],
+        );
+        let data_dir_value_clone2 = data_dir_value_clone.clone();
+        let on_data_dir_change_clone2 = on_data_dir_change_clone.clone();
+        dialog.connect_response(move |dialog, response| {
+            if response == gtk::ResponseType::Accept {
+                if let Some(folder) = dialog.file() {
+                    if let Some(path) = folder.path() {
+                        let path_str = path.to_string_lossy().to_string();
+                        data_dir_value_clone2.set_text(&path_str);
+                        on_data_dir_change_clone2(path_str);
+                    }
+                }
+            }
+            dialog.close();
+        });
+        dialog.show();
+    });
+
+    let data_dir_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
+    data_dir_box.append(&data_dir_label);
+    data_dir_box.append(&data_dir_value);
+    data_dir_box.append(&data_dir_button);
+
+    settings_container.append(&data_dir_box);
 
     settings_container
 }
