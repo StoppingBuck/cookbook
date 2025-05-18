@@ -28,13 +28,6 @@ pub enum AppMsg {
     EditIngredient(String),
     EditRecipe(String),
     TogglePantryCategory(String, bool),
-    UpdateIngredientWithPantry(
-        String,
-        cookbook_engine::Ingredient,
-        Option<f64>,
-        Option<String>,
-        bool, // remove_from_pantry
-    ), // (original_name, new_ingredient, quantity, quantity_type, remove_from_pantry)
     UpdateRecipe(String, cookbook_engine::Recipe), // (original_title, new_recipe)
     ClearError,
     AddIngredient, // Triggers the add ingredient dialog

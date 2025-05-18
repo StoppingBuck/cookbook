@@ -974,7 +974,6 @@ impl DataManager {
         }
         // Remove from pantry if present
         if let Some(pantry) = self.pantry.as_mut() {
-            let original_len = pantry.items.len();
             pantry.items.retain(|item| item.ingredient != ingredient_name);
             let pantry_path = self.data_dir.join("pantry.yaml");
             pantry.to_file(pantry_path)?;

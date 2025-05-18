@@ -1,14 +1,12 @@
 use crate::types::AppModel;
-use crate::types::{AppMsg, Tab};
+use crate::types::AppMsg;
 use crate::ui_constants::*;
 use crate::utils;
 use cookbook_engine::DataManager;
-use gtk::glib;
 use gtk::prelude::*;
 use relm4::gtk;
 use relm4::ComponentSender;
 use relm4::RelmWidgetExt;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -205,8 +203,6 @@ where
             let sender_clone = sender.clone();
             let data_manager_clone = data_manager.clone();
             let ingredient_name_clone = ingredient.name.clone();
-            // Use the correct closure signature for select_ingredient_msg
-            let select_ingredient_msg = edit_ingredient_msg.clone();
             delete_button.connect_clicked(move |_| {
                 let rc_dm = &data_manager_clone;
                 // Check if any recipe uses this ingredient
@@ -214,7 +210,8 @@ where
                 if let Some(recipes) = usage.get(&ingredient_name_clone) {
                     if !recipes.is_empty() {
                         // Fix: collect titles as Vec<String> for join
-                        let recipe_titles: Vec<String> = recipes.iter().map(|r| r.title.clone()).collect();
+                        let recipe_titles: Vec<String> =
+                            recipes.iter().map(|r| r.title.clone()).collect();
                         let msg = format!(
                             "Cannot delete ingredient '{}': used in recipes: {}",
                             ingredient_name_clone,
@@ -240,7 +237,9 @@ where
                         sender_clone.input(edit_ingredient_msg(String::new()));
                         // Use a closure to send ReloadPantry if C::Input is not AppMsg
                         #[allow(unused_variables)]
-                        if let Some(appmsg_sender) = (&sender_clone as &dyn std::any::Any).downcast_ref::<ComponentSender<AppModel>>() {
+                        if let Some(appmsg_sender) = (&sender_clone as &dyn std::any::Any)
+                            .downcast_ref::<ComponentSender<AppModel>>()
+                        {
                             appmsg_sender.input(AppMsg::ReloadPantry);
                         }
                     }
@@ -434,49 +433,6 @@ where
 
     details_container
 }
-/// Updates the pantry details view based on the selected ingredient
-/// Updates the pantry details view based on the selected ingredient
-pub fn update_pantry_details<C>(
-    selected_ingredient: Option<&str>,
-    pantry_details: &gtk::Box,
-    data_manager: &Option<std::rc::Rc<cookbook_engine::DataManager>>,
-    sender: &ComponentSender<C>,
-) where
-    C: relm4::Component<Input = AppMsg>, // Add this constraint
-{
-    // Clear previous content
-    utils::clear_box(&pantry_details);
-
-    if let Some(ingredient_name) = selected_ingredient {
-        if let Some(ref dm) = data_manager {
-            // Build the ingredient detail view
-            let details_view = build_ingredient_detail_view(
-                dm,
-                ingredient_name,
-                sender,
-                AppMsg::SwitchTab,
-                AppMsg::SelectKnowledgeBaseEntry,
-                AppMsg::SelectRecipe,
-                AppMsg::EditIngredient,
-            );
-            pantry_details.append(&details_view);
-        } else {
-            // Data manager not available
-            let error_label = gtk::Label::new(Some(
-                "Unable to load ingredient: data manager not available",
-            ));
-            error_label.set_halign(gtk::Align::Center);
-            error_label.set_valign(gtk::Align::Center);
-            pantry_details.append(&error_label);
-        }
-    } else {
-        // No ingredient selected, show placeholder
-        let select_label = gtk::Label::new(Some("Select an ingredient to view details"));
-        select_label.set_halign(gtk::Align::Center);
-        select_label.set_valign(gtk::Align::Center);
-        pantry_details.append(&select_label);
-    }
-}
 
 pub fn show_edit_ingredient_dialog(
     ingredient: &cookbook_engine::Ingredient,
@@ -652,13 +608,19 @@ pub fn show_edit_ingredient_dialog(
                     let mut dm = cookbook_engine::DataManager::new(&data_dir).unwrap();
                     let create_result = dm.create_ingredient(ingredient_clone.clone());
                     let pantry_result = if in_stock {
-                        dm.update_pantry_item(&ingredient_clone.name, quantity, quantity_type.clone())
+                        dm.update_pantry_item(
+                            &ingredient_clone.name,
+                            quantity,
+                            quantity_type.clone(),
+                        )
                     } else {
                         Ok(true)
                     };
                     match (create_result, pantry_result) {
                         (Ok(_), Ok(_)) => {
-                            sender_clone2.input(crate::types::AppMsg::SelectIngredient(ingredient_clone.name.clone()));
+                            sender_clone2.input(crate::types::AppMsg::SelectIngredient(
+                                ingredient_clone.name.clone(),
+                            ));
                             sender_clone2.input(crate::types::AppMsg::ReloadPantry);
                         }
                         (Err(err), _) | (_, Err(err)) => {
@@ -676,15 +638,22 @@ pub fn show_edit_ingredient_dialog(
                 } else {
                     // UPDATE: update ingredient, then update pantry if needed
                     let mut dm = cookbook_engine::DataManager::new(&data_dir).unwrap();
-                    let update_result = dm.update_ingredient(&original_name, ingredient_clone.clone());
+                    let update_result =
+                        dm.update_ingredient(&original_name, ingredient_clone.clone());
                     let pantry_result = if in_stock {
-                        dm.update_pantry_item(&ingredient_clone.name, quantity, quantity_type.clone())
+                        dm.update_pantry_item(
+                            &ingredient_clone.name,
+                            quantity,
+                            quantity_type.clone(),
+                        )
                     } else {
                         dm.remove_from_pantry(&ingredient_clone.name)
                     };
                     match (update_result, pantry_result) {
                         (Ok(_), Ok(_)) => {
-                            sender_clone2.input(crate::types::AppMsg::SelectIngredient(ingredient_clone.name.clone()));
+                            sender_clone2.input(crate::types::AppMsg::SelectIngredient(
+                                ingredient_clone.name.clone(),
+                            ));
                             sender_clone2.input(crate::types::AppMsg::ReloadPantry);
                         }
                         (Err(err), _) | (_, Err(err)) => {
@@ -708,68 +677,16 @@ pub fn show_edit_ingredient_dialog(
     dialog.show();
 }
 
-/// Handles updating an ingredient and its pantry data, including error dialogs and UI refresh.
-pub fn handle_update_ingredient_with_pantry(
-    old_data_manager: &Option<Rc<DataManager>>,
-    original_name: &str,
-    new_ingredient: cookbook_engine::Ingredient,
-    quantity: Option<f64>,
-    quantity_type: Option<String>,
-    remove_from_pantry: bool,
-    current_tab: crate::types::Tab,
-    sender: &ComponentSender<crate::types::AppModel>,
-) -> Option<(Rc<DataManager>, String)> {
-    if let Some(old_data_manager) = old_data_manager {
-        match DataManager::create_with_updated_ingredient(
-            old_data_manager.get_data_dir(),
-            original_name,
-            new_ingredient.clone(),
-            quantity,
-            quantity_type,
-            remove_from_pantry,
-        ) {
-            Ok(updated_manager) => {
-                // UI refresh logic here (as before)
-                if current_tab == crate::types::Tab::Recipes {
-                    let sender_clone = sender.clone();
-                    glib::spawn_future_local(async move {
-                        sender_clone.input(AppMsg::SwitchTab(crate::types::Tab::Pantry));
-                        sender_clone.input(AppMsg::SwitchTab(crate::types::Tab::Recipes));
-                    });
-                }
-                Some((Rc::new(updated_manager), new_ingredient.name.clone()))
-            }
-            Err(err) => {
-                eprintln!("Error updating ingredient: {:?}", err);
-                let error_message = format!("Failed to update ingredient: {}", err);
-                glib::spawn_future_local(async move {
-                    let dialog = gtk::MessageDialog::builder()
-                        .modal(true)
-                        .buttons(gtk::ButtonsType::Ok)
-                        .message_type(gtk::MessageType::Error)
-                        .text(&error_message)
-                        .build();
-                    dialog.connect_response(|dialog, _| dialog.destroy());
-                    dialog.show();
-                });
-                None
-            }
-        }
-    } else {
-        None
-    }
-}
-
 /// Builds the Pantry tab UI and returns the main container, list container, details box, in-stock switch, and title label.
 pub fn build_pantry_tab(
     model: &AppModel,
     sender: &ComponentSender<AppModel>,
 ) -> (
-    gtk::Box,    // pantry_container
-    gtk::Box,    // pantry_list_container
-    gtk::Box,    // pantry_details_box
-    gtk::Switch, // stock_filter_switch
-    gtk::Label,  // pantry_title
+    gtk::Box,                       // pantry_container
+    gtk::Box,                       // pantry_list_container
+    gtk::Box,                       // pantry_details_box
+    gtk::Switch,                    // stock_filter_switch
+    gtk::Label,                     // pantry_title
     Option<Box<dyn Fn(&AppModel)>>, // refresh_categories closure
 ) {
     // Main container for the Pantry tab
@@ -827,7 +744,10 @@ pub fn build_pantry_tab(
         let listbox = listbox.clone();
         let sender = sender.clone();
         move |categories: Vec<String>, selected_categories: Vec<String>| {
-            println!("DEBUG: [refresh_categories] Called with categories: {:?}, selected: {:?}", categories, selected_categories);
+            println!(
+                "DEBUG: [refresh_categories] Called with categories: {:?}, selected: {:?}",
+                categories, selected_categories
+            );
             while let Some(child) = listbox.first_child() {
                 listbox.remove(&child);
             }
@@ -848,7 +768,10 @@ pub fn build_pantry_tab(
     };
     // Initial population
     let categories = if let Some(ref dm) = model.data_manager {
-        println!("DEBUG: [build_pantry_tab] DataManager ptr: {:p}", Rc::as_ptr(dm));
+        println!(
+            "DEBUG: [build_pantry_tab] DataManager ptr: {:p}",
+            Rc::as_ptr(dm)
+        );
         let cats = dm.as_ref().get_unique_categories();
         println!("DEBUG: [build_pantry_tab] Initial categories: {:?}", cats);
         cats
@@ -857,7 +780,10 @@ pub fn build_pantry_tab(
         Vec::new()
     };
     let selected_categories = model.selected_pantry_categories.clone();
-    println!("DEBUG: [build_pantry_tab] Selected categories: {:?}", selected_categories);
+    println!(
+        "DEBUG: [build_pantry_tab] Selected categories: {:?}",
+        selected_categories
+    );
     refresh_categories(categories.clone(), selected_categories.clone());
 
     // Static wrapper closure for AppWidgets
@@ -866,11 +792,20 @@ pub fn build_pantry_tab(
     let sender_for_refresh_categories = sender.clone();
     let refresh_categories_boxed = Box::new(move |model: &AppModel| {
         if let Some(ref dm) = model.data_manager {
-            println!("DEBUG: [refresh_categories_boxed] DataManager ptr: {:p}", Rc::as_ptr(dm));
+            println!(
+                "DEBUG: [refresh_categories_boxed] DataManager ptr: {:p}",
+                Rc::as_ptr(dm)
+            );
             let categories = dm.as_ref().get_unique_categories();
-            println!("DEBUG: [refresh_categories_boxed] Refreshed categories: {:?}", categories);
+            println!(
+                "DEBUG: [refresh_categories_boxed] Refreshed categories: {:?}",
+                categories
+            );
             let selected_categories = model.selected_pantry_categories.clone();
-            println!("DEBUG: [refresh_categories_boxed] Selected categories: {:?}", selected_categories);
+            println!(
+                "DEBUG: [refresh_categories_boxed] Selected categories: {:?}",
+                selected_categories
+            );
             while let Some(child) = listbox.first_child() {
                 listbox.remove(&child);
             }

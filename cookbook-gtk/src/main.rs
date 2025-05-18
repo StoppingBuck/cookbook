@@ -314,30 +314,6 @@ impl SimpleComponent for AppModel {
                     String::new(),
                 );
             }
-            // Message: User updates an ingredient with pantry data
-            AppMsg::UpdateIngredientWithPantry(
-                original_name,
-                new_ingredient,
-                quantity,
-                quantity_type,
-                remove_from_pantry,
-            ) => {
-                if let Some((updated_manager, new_selected_name)) =
-                    pantry::handle_update_ingredient_with_pantry(
-                        &self.data_manager,
-                        &original_name,
-                        new_ingredient,
-                        quantity,
-                        quantity_type,
-                        remove_from_pantry,
-                        self.current_tab.clone(),
-                        &sender,
-                    )
-                {
-                    self.data_manager = Some(updated_manager);
-                    self.selected_ingredient = Some(new_selected_name);
-                }
-            }
             // Message: User updates a recipe
             AppMsg::UpdateRecipe(original_title, new_recipe) => {
                 // Use the engine's utility method for handling updates
