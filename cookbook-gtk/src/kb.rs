@@ -289,6 +289,7 @@ pub fn build_kb_detail_view(
         }
         content_text.set_halign(gtk::Align::Start);
         content_text.set_wrap(true);
+        content_text.set_wrap_mode(gtk::pango::WrapMode::WordChar);
         content_text.set_xalign(0.0);
         content_text.set_margin_top(DEFAULT_MARGIN);
         details_container.append(&content_text);
