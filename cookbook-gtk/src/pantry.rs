@@ -801,6 +801,16 @@ pub fn build_pantry_tab(
     // Popover for category filters (static)
     let popover = gtk::Popover::new();
     popover.set_parent(&filter_button);
+    // Ensure popover is closed when the parent button is finalized
+    {
+        let popover_weak = popover.downgrade();
+        filter_button.connect_destroy(move |_| {
+            if let Some(popover) = popover_weak.upgrade() {
+                popover.popdown();
+                popover.unparent();
+            }
+        });
+    }
     let popover_box = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
     popover_box.set_margin_all(DEFAULT_MARGIN);
     popover_box.set_vexpand(true);
