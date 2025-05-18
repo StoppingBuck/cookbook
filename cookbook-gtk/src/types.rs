@@ -1,4 +1,5 @@
 use relm4::gtk;
+use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
 use cookbook_engine::DataManager;
@@ -60,6 +61,7 @@ pub struct AppModel {
     pub selected_pantry_categories: Vec<String>,
     pub show_in_stock_only: bool,
     pub error_message: Option<String>,
+    pub refresh_category_popover: Cell<bool>, // Use Cell for interior mutability
 }
 
 /// References to GTK widgets used in the application
@@ -79,4 +81,5 @@ pub struct AppWidgets {
     pub kb_details: gtk::Box,
     //pub settings_label: gtk::Label,
     pub sidebar_buttons: Vec<gtk::Button>,
+    pub refresh_categories: Option<Box<dyn Fn(&AppModel) + 'static>>,
 }

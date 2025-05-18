@@ -88,6 +88,7 @@ impl SimpleComponent for AppModel {
         };
 
         // Create initial model with Recipes tab selected by default
+        use std::cell::Cell;
         let mut model = AppModel {
             data_manager: None,                     // Data manager will be initialized below
             data_dir: data_dir.clone(),             // Store the data directory
@@ -101,6 +102,7 @@ impl SimpleComponent for AppModel {
             selected_pantry_categories: Vec::new(), // No category filters selected initially
             show_in_stock_only: false,              // Don't filter by stock status initially
             error_message: None,                    // No error message initially
+            refresh_category_popover: Cell::new(false),        // Initialize refresh_category_popover to false
         };
 
         // Load data using the DataManager
@@ -144,6 +146,7 @@ impl SimpleComponent for AppModel {
             pantry_details_box,
             stock_filter_switch,
             pantry_title,
+            refresh_categories,
         ) = pantry::build_pantry_tab(&model, &sender);
 
         // Knowledge base tab content
@@ -190,6 +193,7 @@ impl SimpleComponent for AppModel {
             kb_details: kb_details,   // Store the KB details container
             //settings_label: settings_label.clone(),
             sidebar_buttons,
+            refresh_categories: None,
         };
 
         // We call update_view after initializing AppModel and AppWidgets so the entire UI is rendered correctly at app start - for example, the sidebar buttons are styled correctly (Recipes tab is highlighted)
@@ -200,6 +204,9 @@ impl SimpleComponent for AppModel {
 
         // Apply initial view updates based on model state
         AppModel::update_view(&model, &mut widgets, sender.clone());
+
+        // After initializing widgets
+        widgets.refresh_categories = refresh_categories;
 
         ComponentParts { model, widgets }
     }
@@ -444,6 +451,8 @@ impl SimpleComponent for AppModel {
             }
             // Message: User clicks the refresh button for category popover
             AppMsg::RefreshCategoryPopover => {
+                println!("DEBUG: Received RefreshCategoryPopover message");
+                self.refresh_category_popover.set(true);
                 // No model state to update, but force update_view to run
             }
             AppMsg::ClearError => {
@@ -456,6 +465,17 @@ impl SimpleComponent for AppModel {
     // == UPDATE_VIEW STARTS HERE ==
     // update_view updates the UI based on the current model state
     fn update_view(&self, widgets: &mut Self::Widgets, sender: ComponentSender<Self>) {
+        // Pantry category popover refresh logic
+        if self.refresh_category_popover.get() {
+            if let Some(ref refresh_fn) = widgets.refresh_categories {
+                println!("DEBUG: Calling refresh_categories closure from update_view");
+                refresh_fn(self);
+            } else {
+                println!("DEBUG: refresh_categories closure is None");
+            }
+            self.refresh_category_popover.set(false);
+        }
+
         // Update the main stack to show the current tab
         tabs::update_tab_view(&self.current_tab, &widgets.main_stack);
 

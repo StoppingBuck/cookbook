@@ -770,6 +770,7 @@ pub fn build_pantry_tab(
     gtk::Box,    // pantry_details_box
     gtk::Switch, // stock_filter_switch
     gtk::Label,  // pantry_title
+    Option<Box<dyn Fn(&AppModel)>>, // refresh_categories closure
 ) {
     // Main container for the Pantry tab
     let pantry_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
@@ -816,7 +817,7 @@ pub fn build_pantry_tab(
         let listbox = listbox.clone();
         let sender = sender.clone();
         move |categories: Vec<String>, selected_categories: Vec<String>| {
-            // Remove all children
+            println!("DEBUG: [refresh_categories] Called with categories: {:?}, selected: {:?}", categories, selected_categories);
             while let Some(child) = listbox.first_child() {
                 listbox.remove(&child);
             }
@@ -837,13 +838,52 @@ pub fn build_pantry_tab(
     };
     // Initial population
     let categories = if let Some(ref dm) = model.data_manager {
-        dm.as_ref().get_unique_categories()
+        println!("DEBUG: [build_pantry_tab] DataManager ptr: {:p}", Rc::as_ptr(dm));
+        let cats = dm.as_ref().get_unique_categories();
+        println!("DEBUG: [build_pantry_tab] Initial categories: {:?}", cats);
+        cats
     } else {
+        println!("DEBUG: [build_pantry_tab] No DataManager available");
         Vec::new()
     };
     let selected_categories = model.selected_pantry_categories.clone();
+    println!("DEBUG: [build_pantry_tab] Selected categories: {:?}", selected_categories);
     refresh_categories(categories.clone(), selected_categories.clone());
 
+    // Static wrapper closure for AppWidgets
+    let listbox = listbox.clone();
+    let sender = sender.clone();
+    let sender_for_refresh_categories = sender.clone();
+    let refresh_categories_boxed = Box::new(move |model: &AppModel| {
+        if let Some(ref dm) = model.data_manager {
+            println!("DEBUG: [refresh_categories_boxed] DataManager ptr: {:p}", Rc::as_ptr(dm));
+            let categories = dm.as_ref().get_unique_categories();
+            println!("DEBUG: [refresh_categories_boxed] Refreshed categories: {:?}", categories);
+            let selected_categories = model.selected_pantry_categories.clone();
+            println!("DEBUG: [refresh_categories_boxed] Selected categories: {:?}", selected_categories);
+            while let Some(child) = listbox.first_child() {
+                listbox.remove(&child);
+            }
+            for category in &categories {
+                let check = gtk::CheckButton::with_label(category);
+                check.set_active(selected_categories.contains(category));
+                let sender_clone = sender_for_refresh_categories.clone();
+                let category_clone = category.clone();
+                check.connect_toggled(move |btn| {
+                    sender_clone.input(AppMsg::TogglePantryCategory(
+                        category_clone.clone(),
+                        btn.is_active(),
+                    ));
+                });
+                listbox.append(&check);
+            }
+        } else {
+            println!("DEBUG: [refresh_categories_boxed] No DataManager available");
+            while let Some(child) = listbox.first_child() {
+                listbox.remove(&child);
+            }
+        }
+    });
     // Open popover on button click
     filter_button.connect_clicked(move |_| {
         popover.popup();
@@ -855,9 +895,9 @@ pub fn build_pantry_tab(
     refresh_icon.set_pixel_size(16);
     refresh_button.set_child(Some(&refresh_icon));
     refresh_button.set_tooltip_text(Some("Refresh category list"));
-    let sender_clone = sender.clone();
+    let sender_for_refresh = sender.clone();
     refresh_button.connect_clicked(move |_| {
-        sender_clone.input(AppMsg::RefreshCategoryPopover);
+        sender_for_refresh.input(AppMsg::RefreshCategoryPopover);
     });
 
     // Update button label to show number of selected categories
@@ -945,5 +985,6 @@ pub fn build_pantry_tab(
         pantry_details_box,
         stock_filter_switch,
         pantry_title,
+        Some(refresh_categories_boxed),
     )
 }
