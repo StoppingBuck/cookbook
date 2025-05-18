@@ -8,6 +8,7 @@ use gtk::prelude::*;
 use relm4::gtk;
 use relm4::ComponentSender;
 use relm4::RelmWidgetExt;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -796,46 +797,46 @@ pub fn build_pantry_tab(
     filter_button.set_halign(gtk::Align::Start);
     filter_button.set_tooltip_text(Some("Filter by one or more categories"));
 
-    // Popover for category selection
-    let category_popover = gtk::Popover::new();
-    let popover_box = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
-    popover_box.set_margin_all(DEFAULT_MARGIN);
-    popover_box.set_vexpand(true);
-    let scroll = gtk::ScrolledWindow::new();
-    scroll.set_min_content_height(180);
-    scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
-    let listbox = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
-
-    // Get unique categories from ingredients using the engine's method
-    let mut categories: Vec<String> = Vec::new();
-    if let Some(ref dm) = model.data_manager {
-        categories = dm.as_ref().get_unique_categories();
-    }
-
-    // Create filter checkboxes in the popover
-    for category in &categories {
-        let check = gtk::CheckButton::with_label(category);
-        check.set_active(model.selected_pantry_categories.contains(category));
-        let sender_clone = sender.clone();
-        let category_clone = category.clone();
-        check.connect_toggled(move |btn| {
-            sender_clone.input(AppMsg::TogglePantryCategory(
-                category_clone.clone(),
-                btn.is_active(),
-            ));
-        });
-        listbox.append(&check);
-    }
-    scroll.set_child(Some(&listbox));
-    popover_box.append(&scroll);
-    category_popover.set_child(Some(&popover_box));
-    // filter_button.set_popover(Some(&category_popover));
-
-    // Attach popover to button and show on click
-    category_popover.set_parent(&filter_button);
-    let popover_clone = category_popover.clone();
-    filter_button.connect_clicked(move |_| {
-        popover_clone.popup();
+    // Remove static popover: instead, create it dynamically on click
+    let sender_for_popover = sender.clone();
+    let model_for_popover = model.clone();
+    let filter_button_clone = filter_button.clone();
+    // Always fetch latest categories and selected state before connecting the closure
+    let categories = if let Some(ref dm) = model.data_manager {
+        dm.as_ref().get_unique_categories()
+    } else {
+        Vec::new()
+    };
+    let selected_categories = model.selected_pantry_categories.clone();
+    let sender_for_popover = sender.clone();
+    filter_button.connect_clicked(move |btn| {
+        // Always create a new popover and content
+        let popover = gtk::Popover::new();
+        popover.set_parent(btn); // Pass btn directly as &Button
+        let popover_box = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
+        popover_box.set_margin_all(DEFAULT_MARGIN);
+        popover_box.set_vexpand(true);
+        let scroll = gtk::ScrolledWindow::new();
+        scroll.set_min_content_height(180);
+        scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+        let listbox = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
+        for category in &categories {
+            let check = gtk::CheckButton::with_label(category);
+            check.set_active(selected_categories.contains(category));
+            let sender_clone = sender_for_popover.clone();
+            let category_clone = category.clone();
+            check.connect_toggled(move |btn| {
+                sender_clone.input(AppMsg::TogglePantryCategory(
+                    category_clone.clone(),
+                    btn.is_active(),
+                ));
+            });
+            listbox.append(&check);
+        }
+        scroll.set_child(Some(&listbox));
+        popover_box.append(&scroll);
+        popover.set_child(Some(&popover_box));
+        popover.popup();
     });
 
     // Update button label to show number of selected categories

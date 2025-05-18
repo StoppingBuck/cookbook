@@ -413,6 +413,7 @@ impl SimpleComponent for AppModel {
                     match cookbook_engine::DataManager::new(data_manager.get_data_dir()) {
                         Ok(updated_manager) => {
                             self.data_manager = Some(Rc::new(updated_manager));
+                            // Do not attempt to rebuild pantry tab UI here; update_view will handle it
                         }
                         Err(err) => {
                             let error_message = format!("Failed to reload pantry: {}", err);

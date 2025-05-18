@@ -11,7 +11,7 @@ items:
 - ingredient: milk
   quantity: 1.0
   quantity_type: ''
-  last_updated: 2025-05-17
+  last_updated: 2025-05-18
 - ingredient: flour
   quantity: null
   quantity_type: ''
@@ -19,7 +19,7 @@ items:
 - ingredient: pasta
   quantity: 1.0
   quantity_type: t
-  last_updated: 2025-05-17
+  last_updated: 2025-05-18
 - ingredient: eggplant
   quantity: 2.0
   quantity_type: ''
@@ -27,4 +27,4 @@ items:
 - ingredient: pumpkin
   quantity: null
   quantity_type: ''
-  last_updated: 2025-05-17
+  last_updated: 2025-05-18
