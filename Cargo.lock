@@ -157,6 +157,7 @@ dependencies = [
  "gdk-pixbuf",
  "gtk4",
  "markdown",
+ "regex",
  "relm4",
  "serde",
  "serde_yaml",

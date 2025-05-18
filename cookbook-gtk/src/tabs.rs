@@ -94,7 +94,6 @@ pub fn update_tab_content(
                     &widgets.kb_details,
                     &model.data_manager,
                     kb_slug,
-                    &model.data_dir,
                 );
             } else {
                 // No KB entry selected, show placeholder

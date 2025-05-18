@@ -573,7 +573,6 @@ impl SimpleComponent for AppModel {
                     &widgets.kb_details,
                     &self.data_manager,
                     slug,
-                    &self.data_dir,
                 );
             } else {
                 kb::show_kb_details_placeholder(&widgets.kb_details);

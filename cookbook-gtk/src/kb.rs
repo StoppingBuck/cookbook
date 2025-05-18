@@ -3,8 +3,9 @@ use gtk::prelude::*;
 use relm4::gtk;
 use relm4::ComponentSender;
 use relm4::RelmWidgetExt;
-use std::path::Path;
 use std::rc::Rc;
+use regex::Regex;
+use relm4::gtk::glib;
 
 use crate::types::AppModel;
 use crate::types::AppMsg;
@@ -72,20 +73,60 @@ pub fn update_kb_list<C>(
     }
 }
 
-/// Builds and returns the KB entry detail view for a selected entry
+/// Converts a subset of Markdown to Pango markup for GTK labels.
+/// Supports headings, bold, italic, unordered lists, and links.
+fn markdown_to_pango(md: &str) -> String {
+    let mut out = String::new();
+    let bold_re = Regex::new(r"\*\*(.+?)\*\*").unwrap();
+    let italic_re = Regex::new(r"\*(.+?)\*").unwrap();
+    let link_re = Regex::new(r"\[(.+?)\]\((.+?)\)").unwrap();
+    for line in md.lines() {
+        let trimmed = line.trim();
+        let mut pango_line = String::new();
+        // Headings
+        if trimmed.starts_with("### ") {
+            pango_line.push_str(&format!("<span size='large' weight='bold'>{}</span>", &trimmed[4..]));
+        } else if trimmed.starts_with("## ") {
+            pango_line.push_str(&format!("<span size='x-large' weight='bold'>{}</span>", &trimmed[3..]));
+        } else if trimmed.starts_with("# ") {
+            pango_line.push_str(&format!("<span size='xx-large' weight='bold'>{}</span>", &trimmed[2..]));
+        } else if trimmed.starts_with("* ") || trimmed.starts_with("- ") {
+            // Unordered list
+            pango_line.push_str(&format!("• {}", &trimmed[2..]));
+        } else {
+            pango_line.push_str(trimmed);
+        }
+        // Inline: links, bold, italic (order: links -> bold -> italic)
+        let pango_line = link_re.replace_all(&pango_line, |caps: &regex::Captures| {
+            // Render as underlined text with URL in parentheses
+            format!("<u>{}</u> ({})", &caps[1], &caps[2])
+        });
+        let pango_line = bold_re.replace_all(&pango_line, |caps: &regex::Captures| {
+            format!("<b>{}</b>", &caps[1])
+        });
+        let pango_line = italic_re.replace_all(&pango_line, |caps: &regex::Captures| {
+            // Avoid matching inside bold
+            if caps[1].contains("<b>") { caps[0].to_string() } else { format!("<i>{}</i>", &caps[1]) }
+        });
+        out.push_str(&pango_line);
+        out.push('\n');
+    }
+    out.trim().to_string()
+}
+
 pub fn build_kb_detail_view(
     data_manager: &Rc<DataManager>,
     kb_slug: &str,
-    data_dir: &Path,
 ) -> gtk::ScrolledWindow {
     let kb_details_scroll = gtk::ScrolledWindow::new();
     kb_details_scroll.set_hexpand(true);
-    kb_details_scroll.set_vexpand(true);
+    kb_details_scroll.set_vexpand(true); // Allow vertical expansion
 
     // Find the selected KB entry
     if let Some(kb_entry) = data_manager.get_kb_entry(kb_slug) {
         let details_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
         details_container.set_margin_all(DEFAULT_MARGIN);
+        details_container.set_vexpand(true); // Allow vertical expansion
 
         // Title
         let title = gtk::Label::new(None);
@@ -99,15 +140,60 @@ pub fn build_kb_detail_view(
 
         // Image (if available)
         if let Some(image_name) = &kb_entry.image {
-            // Use the engine's KB image path provider instead of data_dir
             if let Some(image_path) = data_manager.get_kb_image_path(image_name) {
                 if image_path.exists() {
-                    let image = gtk::Image::from_file(&image_path);
-                    image.set_halign(gtk::Align::Center);
-                    image.set_margin_bottom(HEADER_MARGIN);
-                    details_container.append(&image);
+                    match gtk::gdk_pixbuf::Pixbuf::from_file(&image_path) {
+                        Ok(pixbuf) => {
+                            let aspect = pixbuf.width() as f32 / pixbuf.height() as f32;
+                            let image = gtk::Image::from_pixbuf(Some(&pixbuf));
+                            image.set_hexpand(true);
+                            image.set_vexpand(true);
+                            // Use GtkAspectFrame to make the image scale with the window, preserving aspect ratio
+                            let aspect_frame = gtk::AspectFrame::new(0.5, 0.0, aspect, false);
+                            aspect_frame.set_hexpand(true);
+                            aspect_frame.set_vexpand(true);
+                            aspect_frame.set_halign(gtk::Align::Fill);
+                            aspect_frame.set_valign(gtk::Align::Fill); // Allow vertical expansion
+                            aspect_frame.set_child(Some(&image));
+                            aspect_frame.set_margin_bottom(HEADER_MARGIN);
+                            details_container.append(&aspect_frame);
+
+                            // Print debug widget sizes only once using RefCell<bool>
+                            use std::cell::RefCell;
+                            let printed = std::rc::Rc::new(RefCell::new(false));
+                            let details_container_clone = details_container.clone();
+                            let aspect_frame_clone = aspect_frame.clone();
+                            let image_clone = image.clone();
+                            let printed_clone = printed.clone();
+                            aspect_frame.add_tick_callback(move |_, _| {
+                                let mut printed = printed_clone.borrow_mut();
+                                if !*printed {
+                                    let cont_alloc = details_container_clone.allocation();
+                                    let alloc = aspect_frame_clone.allocation();
+                                    let img_alloc = image_clone.allocation();
+                                    let window = aspect_frame_clone.root();
+                                    let (win_w, win_h) = if let Some(window) = window.and_downcast::<gtk::Window>() {
+                                        let alloc = window.allocation();
+                                        (alloc.width(), alloc.height())
+                                    } else { (0, 0) };
+                                    // Only print if all allocations are nonzero
+                                    if win_w > 0 && win_h > 0 && cont_alloc.width() > 0 && cont_alloc.height() > 0 && alloc.width() > 0 && alloc.height() > 0 && img_alloc.width() > 0 && img_alloc.height() > 0 {
+                                        println!("[KB DEBUG] Window size: {}x{} | details_container: {}x{} | aspect_frame: {}x{} | image: {}x{}", win_w, win_h, cont_alloc.width(), cont_alloc.height(), alloc.width(), alloc.height(), img_alloc.width(), img_alloc.height());
+                                        *printed = true;
+                                        return glib::ControlFlow::Break;
+                                    }
+                                }
+                                glib::ControlFlow::Continue
+                            });
+                        }
+                        Err(_) => {
+                            let missing_label = gtk::Label::new(Some("Image not available"));
+                            missing_label.set_halign(gtk::Align::Center);
+                            missing_label.set_margin_bottom(HEADER_MARGIN);
+                            details_container.append(&missing_label);
+                        }
+                    }
                 } else {
-                    eprintln!("Image not found: {:?}", image_path);
                     let missing_label = gtk::Label::new(Some("Image not available"));
                     missing_label.set_halign(gtk::Align::Center);
                     missing_label.set_margin_bottom(HEADER_MARGIN);
@@ -145,12 +231,21 @@ pub fn build_kb_detail_view(
             details_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         }
 
-        // Content (formatted as markdown)
-        let content_text = gtk::Label::new(Some(&kb_entry.content));
+        // Content (rendered as markdown to pango)
+        let pango_markup = markdown_to_pango(&kb_entry.content);
+        let content_text = gtk::Label::new(None);
+        // Heuristic: fallback to plain text if markup looks broken
+        let open_spans = pango_markup.matches("<span").count();
+        let close_spans = pango_markup.matches("</span>").count();
+        if open_spans == close_spans && !pango_markup.contains("</span>\n\n</span>") {
+            content_text.set_markup(&pango_markup);
+        } else {
+            content_text.set_text(&kb_entry.content);
+        }
         content_text.set_halign(gtk::Align::Start);
         content_text.set_wrap(true);
         content_text.set_xalign(0.0);
-        content_text.set_use_markup(true); // Allow basic HTML-like formatting
+        content_text.set_margin_top(DEFAULT_MARGIN);
         details_container.append(&content_text);
 
         kb_details_scroll.set_child(Some(&details_container));
@@ -173,7 +268,6 @@ pub fn update_kb_details<C>(
     kb_details: &gtk::Box,
     data_manager: &Option<Rc<DataManager>>,
     kb_slug: &str,
-    data_dir: &Path,
 ) where
     C: relm4::Component,
 {
@@ -181,7 +275,7 @@ pub fn update_kb_details<C>(
     utils::clear_box(kb_details);
 
     if let Some(ref dm) = data_manager {
-        let kb_details_scroll = build_kb_detail_view(dm, kb_slug, data_dir);
+        let kb_details_scroll = build_kb_detail_view(dm, kb_slug);
         kb_details.append(&kb_details_scroll);
     } else {
         // Data manager not available
@@ -206,6 +300,7 @@ pub fn show_kb_details_placeholder(kb_details: &gtk::Box) {
 }
 
 /// Helper function to select the correct KB entry in the list box
+#[allow(dead_code)]
 pub fn select_kb_entry_in_list(kb_list_box: &gtk::ListBox, kb_slug: &str) {
     // First try to find by widget name (which should contain the slug)
     let mut i = 0;
