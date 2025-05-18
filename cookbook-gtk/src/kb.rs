@@ -80,36 +80,74 @@ fn markdown_to_pango(md: &str) -> String {
     let bold_re = Regex::new(r"\*\*(.+?)\*\*").unwrap();
     let italic_re = Regex::new(r"\*(.+?)\*").unwrap();
     let link_re = Regex::new(r"\[(.+?)\]\((.+?)\)").unwrap();
+    let mut in_table = false;
     for line in md.lines() {
         let trimmed = line.trim();
+        // Debug: print each line and what the parser thinks it is
+        println!("[KB DEBUG] markdown_to_pango: line='{}'", trimmed);
+        // Detect markdown table lines (start with | or contain only dashes and pipes)
+        let is_table_line = trimmed.starts_with('|') ||
+            (trimmed.chars().all(|c| c == '|' || c == '-' || c == ' '));
+        if is_table_line {
+            println!("[KB DEBUG] Detected table line: {}", trimmed);
+            if !in_table {
+                out.push_str("<span font_family='monospace'>");
+                in_table = true;
+            }
+            // Escape XML special chars for Pango
+            let safe = glib::markup_escape_text(trimmed);
+            out.push_str(&safe);
+            out.push('\n');
+            continue;
+        } else if in_table {
+            out.push_str("</span>\n");
+            in_table = false;
+        }
         let mut pango_line = String::new();
         // Headings
         if trimmed.starts_with("### ") {
-            pango_line.push_str(&format!("<span size='large' weight='bold'>{}</span>", &trimmed[4..]));
+            let safe = glib::markup_escape_text(&trimmed[4..]);
+            println!("[KB DEBUG] Detected h3: {}", &safe);
+            pango_line.push_str(&format!("<span size='large' weight='bold'>{}</span>", safe));
         } else if trimmed.starts_with("## ") {
-            pango_line.push_str(&format!("<span size='x-large' weight='bold'>{}</span>", &trimmed[3..]));
+            let safe = glib::markup_escape_text(&trimmed[3..]);
+            println!("[KB DEBUG] Detected h2: {}", &safe);
+            pango_line.push_str(&format!("<span size='x-large' weight='bold'>{}</span>", safe));
         } else if trimmed.starts_with("# ") {
-            pango_line.push_str(&format!("<span size='xx-large' weight='bold'>{}</span>", &trimmed[2..]));
+            let safe = glib::markup_escape_text(&trimmed[2..]);
+            println!("[KB DEBUG] Detected h1: {}", &safe);
+            pango_line.push_str(&format!("<span size='xx-large' weight='bold'>{}</span>", safe));
         } else if trimmed.starts_with("* ") || trimmed.starts_with("- ") {
-            // Unordered list
-            pango_line.push_str(&format!("• {}", &trimmed[2..]));
+            let safe = glib::markup_escape_text(&trimmed[2..]);
+            println!("[KB DEBUG] Detected list item: {}", &safe);
+            pango_line.push_str(&format!("• {}", safe));
         } else {
-            pango_line.push_str(trimmed);
+            let safe = glib::markup_escape_text(trimmed);
+            pango_line.push_str(&safe);
         }
         // Inline: links, bold, italic (order: links -> bold -> italic)
         let pango_line = link_re.replace_all(&pango_line, |caps: &regex::Captures| {
-            // Render as underlined text with URL in parentheses
-            format!("<u>{}</u> ({})", &caps[1], &caps[2])
+            // Escape link text and URL
+            let text = glib::markup_escape_text(&caps[1]);
+            let url = glib::markup_escape_text(&caps[2]);
+            format!("<u>{}</u> ({})", text, url)
         });
         let pango_line = bold_re.replace_all(&pango_line, |caps: &regex::Captures| {
-            format!("<b>{}</b>", &caps[1])
+            let text = glib::markup_escape_text(&caps[1]);
+            format!("<b>{}</b>", text)
         });
         let pango_line = italic_re.replace_all(&pango_line, |caps: &regex::Captures| {
             // Avoid matching inside bold
-            if caps[1].contains("<b>") { caps[0].to_string() } else { format!("<i>{}</i>", &caps[1]) }
+            if caps[1].contains("<b>") { caps[0].to_string() } else {
+                let text = glib::markup_escape_text(&caps[1]);
+                format!("<i>{}</i>", text)
+            }
         });
         out.push_str(&pango_line);
         out.push('\n');
+    }
+    if in_table {
+        out.push_str("</span>\n");
     }
     out.trim().to_string()
 }
@@ -147,13 +185,20 @@ pub fn build_kb_detail_view(
                             let aspect = pixbuf.width() as f32 / pixbuf.height() as f32;
                             let image = gtk::Image::from_pixbuf(Some(&pixbuf));
                             image.set_hexpand(true);
-                            image.set_vexpand(true);
+                            // Don't expand vertically, use fixed sizing instead
+                            image.set_vexpand(false);
+                            
                             // Use GtkAspectFrame to make the image scale with the window, preserving aspect ratio
                             let aspect_frame = gtk::AspectFrame::new(0.5, 0.0, aspect, false);
                             aspect_frame.set_hexpand(true);
-                            aspect_frame.set_vexpand(true);
+                            // Don't expand vertically, use fixed sizing instead
+                            aspect_frame.set_vexpand(false);
                             aspect_frame.set_halign(gtk::Align::Fill);
-                            aspect_frame.set_valign(gtk::Align::Fill); // Allow vertical expansion
+                            aspect_frame.set_valign(gtk::Align::Start); // Align to top
+                            
+                            // Set minimum height to ensure image is visible
+                            aspect_frame.set_size_request(-1, 300); // width: -1 means "natural width", height: 300px minimum
+                            
                             aspect_frame.set_child(Some(&image));
                             aspect_frame.set_margin_bottom(HEADER_MARGIN);
                             details_container.append(&aspect_frame);

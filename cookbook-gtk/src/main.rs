@@ -13,6 +13,8 @@ mod tabs;
 mod types;
 mod ui_constants;
 mod utils;
+mod i18n;
+mod user_settings;
 
 // First, we import the necessary libraries and modules
 // The gtk::prelude::* import brings in a collection of traits from the GTK library, which are essential for working with GTK widgets and their associated methods. This simplifies the usage of GTK by allowing you to call methods directly on widgets without needing to explicitly import each trait.
@@ -36,7 +38,9 @@ use relm4::SimpleComponent;
 use ui_constants::*; // Import trait for implementing UI components
 use std::env; // Import env for accessing environment variables
 use std::path::PathBuf; // Import PathBuf for handling file paths
-use std::rc::Rc; // Import Rc for reference counting // Import extension traits for widgets
+use std::rc::Rc; // Import Rc for reference counting
+use std::cell::Cell; // Import Cell for interior mutability
+use crate::user_settings::UserSettings; // Import UserSettings to resolve undeclared type error // Import extension traits for widgets
 use types::{AppModel, AppMsg, AppWidgets, Tab};
 
 
@@ -87,22 +91,27 @@ impl SimpleComponent for AppModel {
             }
         };
 
-        // Create initial model with Recipes tab selected by default
-        use std::cell::Cell;
+        // Load user settings from config file
+        let config_path = dirs::config_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("cookbook-gtk/user_settings.toml");
+        let user_settings = UserSettings::load(&config_path);
+        let user_settings_rc = std::rc::Rc::new(std::cell::RefCell::new(user_settings));
         let mut model = AppModel {
-            data_manager: None,                     // Data manager will be initialized below
-            data_dir: data_dir.clone(),             // Store the data directory
-            current_tab: Tab::Recipes,              // Default tab is Recipes
-            selected_recipe: None,                  // No recipe selected initially
-            selected_ingredient: None,              // No ingredient selected initially
-            selected_kb_entry: None,                // No KB entry selected initially
-            search_text: String::new(),             // Search bar is empty initially
-            show_about_dialog: false,               // About dialog is not shown by default
-            show_help_dialog: false,                // Help dialog is not shown by default
-            selected_pantry_categories: Vec::new(), // No category filters selected initially
-            show_in_stock_only: false,              // Don't filter by stock status initially
-            error_message: None,                    // No error message initially
-            refresh_category_popover: Cell::new(false),        // Initialize refresh_category_popover to false
+            data_manager: None,
+            data_dir: data_dir.clone(),
+            current_tab: Tab::Recipes,
+            selected_recipe: None,
+            selected_ingredient: None,
+            selected_kb_entry: None,
+            search_text: String::new(),
+            show_about_dialog: false,
+            show_help_dialog: false,
+            selected_pantry_categories: Vec::new(),
+            show_in_stock_only: false,
+            error_message: None,
+            refresh_category_popover: Cell::new(false),
+            user_settings: user_settings_rc.clone(),
         };
 
         // Load data using the DataManager
@@ -116,6 +125,9 @@ impl SimpleComponent for AppModel {
                 None
             }
         };
+
+        // Set language for i18n at startup
+        crate::i18n::set_language(&model.user_settings.borrow().language);
 
         // Here comes all the UI code
 
@@ -153,7 +165,29 @@ impl SimpleComponent for AppModel {
         let (kb_container, kb_list_box, kb_details, kb_label) = kb::build_kb_tab(&model, &sender);
 
         // Settings tab content
-        let settings_container = settings::build_settings_tab();
+        let settings_container = settings::build_settings_tab(
+            &model.user_settings.borrow().language,
+            {
+                let user_settings_rc = model.user_settings.clone();
+                let sender = sender.clone();
+                move |lang: String| {
+                    // Save language to user settings and reload translations
+                    let mut user_settings = user_settings_rc.borrow_mut();
+                    user_settings.language = lang.clone();
+                    let config_path = dirs::config_dir()
+                        .unwrap_or_else(|| std::path::PathBuf::from("."))
+                        .join("cookbook-gtk/user_settings.toml");
+                    user_settings.save(&config_path);
+                    crate::i18n::set_language(&lang);
+                    // Debug output for UI refresh
+                    println!("[DEBUG] UI refresh triggered after language change to: {}", lang);
+                    // Trigger a full UI refresh by sending a message
+                    sender.input(AppMsg::ReloadPantry);
+                    sender.input(AppMsg::ReloadRecipes);
+                    sender.input(AppMsg::SwitchTab(Tab::Settings));
+                }
+            },
+        );
 
         // Add tab content to stack
         main_stack.add_named(&recipes_container, Some("recipes"));
@@ -302,9 +336,11 @@ impl SimpleComponent for AppModel {
                 // Create a blank ingredient and no pantry item
                 let blank_ingredient = cookbook_engine::Ingredient {
                     name: String::new(),
+                    slug: String::new(),
                     category: String::new(),
                     kb: None,
                     tags: Some(Vec::new()),
+                    translations: None,
                 };
                 pantry::show_edit_ingredient_dialog(
                     &blank_ingredient,
@@ -586,6 +622,7 @@ impl SimpleComponent for AppModel {
                 self.show_in_stock_only,
                 &sender,
                 AppMsg::SelectIngredient,
+                self,
             );
         }
 

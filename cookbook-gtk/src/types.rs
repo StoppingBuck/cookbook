@@ -1,3 +1,5 @@
+use crate::i18n::tr;
+use crate::user_settings::UserSettings;
 use relm4::gtk;
 use std::cell::Cell;
 use std::path::PathBuf;
@@ -55,6 +57,7 @@ pub struct AppModel {
     pub show_in_stock_only: bool,
     pub error_message: Option<String>,
     pub refresh_category_popover: Cell<bool>, // Use Cell for interior mutability
+    pub user_settings: std::rc::Rc<std::cell::RefCell<UserSettings>>, // Now Rc<RefCell<UserSettings>>
 }
 
 /// References to GTK widgets used in the application

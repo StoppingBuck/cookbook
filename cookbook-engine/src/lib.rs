@@ -16,9 +16,17 @@ Serialize and Deserialize are traits from the Serde library (serialization/deser
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ingredient {
     pub name: String,
+    pub slug: String,
     pub category: String,
     pub kb: Option<String>,
     pub tags: Option<Vec<String>>,
+    pub translations: Option<HashMap<String, TranslationForms>>, // language code -> forms
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranslationForms {
+    pub one: String,
+    pub other: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -542,25 +550,38 @@ impl DataManager {
         results
     }
 
-    /// Filters ingredients based on search text, categories, and stock status
-    pub fn filter_ingredients(&self, 
-                             search_text: &str, 
-                             categories: &[String], 
-                             in_stock_only: bool) -> Vec<&Ingredient> {
+    /// Filters ingredients based on search text, categories, and stock status, using translations
+    pub fn filter_ingredients(
+        &self,
+        search_text: &str,
+        categories: &[String],
+        in_stock_only: bool,
+        lang: &str,
+    ) -> Vec<&Ingredient> {
+        let search_lower = search_text.to_lowercase();
         self.get_all_ingredients()
             .into_iter()
             .filter(|ingredient| {
-                // Match search text
-                let matches_search = search_text.is_empty() || 
-                    ingredient.name.to_lowercase().contains(&search_text.to_lowercase());
-                    
+                // Match search text against slug, name, and translations
+                let mut matches_search = search_text.is_empty()
+                    || ingredient.slug.to_lowercase().contains(&search_lower)
+                    || ingredient.name.to_lowercase().contains(&search_lower);
+                if let Some(translations) = &ingredient.translations {
+                    if let Some(forms) = translations.get(lang) {
+                        matches_search = matches_search
+                            || forms.one.to_lowercase().contains(&search_lower)
+                            || forms.other.to_lowercase().contains(&search_lower);
+                    }
+                    if let Some(forms) = translations.get("en") {
+                        matches_search = matches_search
+                            || forms.one.to_lowercase().contains(&search_lower)
+                            || forms.other.to_lowercase().contains(&search_lower);
+                    }
+                }
                 // Match category filter
-                let matches_category = categories.is_empty() || 
-                    categories.contains(&ingredient.category);
-                    
+                let matches_category = categories.is_empty() || categories.contains(&ingredient.category);
                 // Match stock status
                 let matches_stock = !in_stock_only || self.is_in_pantry(&ingredient.name);
-                
                 matches_search && matches_category && matches_stock
             })
             .collect()
@@ -980,6 +1001,88 @@ impl DataManager {
             Ok(true)
         } else {
             Ok(true)
+        }
+    }
+    
+    /// Search for an ingredient by any translation (singular or plural) in the given language, or by slug
+    pub fn find_ingredient_by_name_or_translation(
+        &self,
+        query: &str,
+        lang: &str,
+    ) -> Option<&Ingredient> {
+        let query_lower = query.to_lowercase();
+        for ingredient in self.get_all_ingredients() {
+            // Check slug
+            if ingredient.slug.to_lowercase() == query_lower {
+                return Some(ingredient);
+            }
+            // Check name
+            if ingredient.name.to_lowercase() == query_lower {
+                return Some(ingredient);
+            }
+            // Check translations
+            if let Some(translations) = &ingredient.translations {
+                if let Some(forms) = translations.get(lang) {
+                    if forms.one.to_lowercase() == query_lower || forms.other.to_lowercase() == query_lower {
+                        return Some(ingredient);
+                    }
+                }
+                // Fallback to English
+                if let Some(forms) = translations.get("en") {
+                    if forms.one.to_lowercase() == query_lower || forms.other.to_lowercase() == query_lower {
+                        return Some(ingredient);
+                    }
+                }
+            }
+        }
+        None
+    }
+    
+    /// Returns the display name for an ingredient in the given language and quantity (for pluralization)
+    pub fn ingredient_display_name(
+        ingredient: &Ingredient,
+        lang: &str,
+        quantity: Option<f64>,
+    ) -> String {
+        if let Some(translations) = &ingredient.translations {
+            if let Some(forms) = translations.get(lang) {
+                let n = quantity.unwrap_or(1.0);
+                if (n - 1.0).abs() < f64::EPSILON {
+                    return forms.one.clone();
+                } else {
+                    return forms.other.clone();
+                }
+            }
+            // fallback to English
+            if let Some(forms) = translations.get("en") {
+                let n = quantity.unwrap_or(1.0);
+                if (n - 1.0).abs() < f64::EPSILON {
+                    return forms.one.clone();
+                } else {
+                    return forms.other.clone();
+                }
+            }
+        }
+        // fallback to name or slug
+        if !ingredient.name.is_empty() {
+            ingredient.name.clone()
+        } else {
+            ingredient.slug.clone()
+        }
+    }
+    
+    /// Returns the display name for a recipe ingredient in the correct language and plural form
+    pub fn recipe_ingredient_display_name(
+        &self,
+        recipe_ingredient: &RecipeIngredient,
+        lang: &str,
+    ) -> String {
+        if let Some(ingredient) = self.get_ingredient(&recipe_ingredient.ingredient) {
+            let qty = recipe_ingredient.quantity;
+            Self::ingredient_display_name(ingredient, lang, qty)
+        } else {
+            // fallback to whatever is in the recipe
+            recipe_ingredient.ingredient.clone()
         }
     }
 }
