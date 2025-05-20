@@ -1,8 +1,6 @@
 use crate::i18n::tr;
-use crate::user_settings::UserSettings;
 use gtk::prelude::*;
 use relm4::RelmWidgetExt;
-use std::path::PathBuf;
 use crate::ui_constants::*;
 
 pub fn build_settings_tab(

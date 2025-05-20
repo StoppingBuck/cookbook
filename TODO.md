@@ -3,7 +3,8 @@
 - Markdown support for recipes (read/write)
 - Tests. Especially unit tests on the engine
 - An icon for the window (X is currently givin' it to ya)
-- Translations! All ingredients should be language-agnostic (how?)
+- [WIP] All ingredients should be language-agnostic (how?)
+- [WIP] Handle pluralization in pantry
 
 ## Recipes
 - Edit dialog is fugly
@@ -23,8 +24,8 @@
 - Think of a way to keep updates coming, and coupling with ingredients...
 
 ## Settings
-- data_dir location and validation
-- language?
+- [WIP] data_dir location and validation
+- [WIP] language?
 
 ## About
 - Done

@@ -1,4 +1,3 @@
-use crate::i18n::tr;
 use crate::user_settings::UserSettings;
 use relm4::gtk;
 use std::cell::Cell;

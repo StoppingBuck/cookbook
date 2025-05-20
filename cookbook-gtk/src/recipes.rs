@@ -219,9 +219,9 @@ where
 
         // Recipe metadata: prep time, downtime, servings
         let metadata_grid = gtk::Grid::new();
-        metadata_grid.set_column_spacing(20);
-        metadata_grid.set_row_spacing(5);
-        metadata_grid.set_margin_bottom(HEADER_MARGIN);
+        metadata_grid.set_column_spacing(DEFAULT_MARGIN.try_into().unwrap_or(0));
+        metadata_grid.set_row_spacing(TAG_SPACING.try_into().unwrap_or(0));
+        metadata_grid.set_margin_bottom(SECTION_SPACING); // Space after the grid
 
         // Prep time
         let prep_label = gtk::Label::new(None);
@@ -436,8 +436,8 @@ pub fn show_edit_recipe_dialog(
     let dialog = gtk::Dialog::new();
     dialog.set_title(Some(&format!("Edit Recipe: {}", recipe_title)));
     dialog.set_modal(true);
-    dialog.set_default_width(700); // Increased from 500
-    dialog.set_default_height(800); // Increased from 600
+    dialog.set_default_width(750); // Increased from 700
+    dialog.set_default_height(850); // Increased from 800
 
     // Set transient parent to an appropriate application window
     for window in gtk::Window::list_toplevels() {
@@ -451,87 +451,99 @@ pub fn show_edit_recipe_dialog(
 
     let content_area = dialog.content_area();
     content_area.set_margin_all(DEFAULT_MARGIN);
-    content_area.set_spacing(SECTION_SPACING);
+    content_area.set_spacing(SECTION_SPACING); // Spacing for direct children of content_area
 
     let scrolled_window = gtk::ScrolledWindow::new();
     scrolled_window.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
     scrolled_window.set_vexpand(true);
 
-    let form_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
-    form_container.set_margin_all(DEFAULT_MARGIN);
+    let form_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING); // Spacing between sections in the form
+    form_container.set_margin_all(DEFAULT_MARGIN); // Margin for the form itself within scrolled_window
+
+    // --- Metadata Grid (Title, Times, Servings, Tags) ---
+    let metadata_grid = gtk::Grid::new();
+    metadata_grid.set_column_spacing(DEFAULT_MARGIN.try_into().unwrap_or(0));
+    metadata_grid.set_row_spacing(TAG_SPACING.try_into().unwrap_or(0));
+    metadata_grid.set_margin_bottom(SECTION_SPACING); // Space after the grid
 
     // Title field
-    let title_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     let title_label = gtk::Label::new(Some("Title:"));
     title_label.set_halign(gtk::Align::Start);
-    title_label.set_width_chars(12);
+    title_label.set_valign(gtk::Align::Center);
     let title_entry = gtk::Entry::new();
     title_entry.set_text(&recipe.title);
     title_entry.set_hexpand(true);
-    title_box.append(&title_label);
-    title_box.append(&title_entry);
+    title_entry.set_valign(gtk::Align::Center);
+    metadata_grid.attach(&title_label, 0, 0, 1, 1);
+    metadata_grid.attach(&title_entry, 1, 0, 3, 1);
 
     // Prep time field
-    let prep_time_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     let prep_time_label = gtk::Label::new(Some("Prep Time (min):"));
     prep_time_label.set_halign(gtk::Align::Start);
-    prep_time_label.set_width_chars(12);
+    prep_time_label.set_valign(gtk::Align::Center);
     let prep_time_entry = gtk::Entry::new();
     if let Some(prep_time) = recipe.prep_time {
         prep_time_entry.set_text(&prep_time.to_string());
     }
-    prep_time_entry.set_hexpand(true);
-    prep_time_box.append(&prep_time_label);
-    prep_time_box.append(&prep_time_entry);
+    prep_time_entry.set_hexpand(false);
+    prep_time_entry.set_width_chars(8);
+    prep_time_entry.set_valign(gtk::Align::Center);
+    metadata_grid.attach(&prep_time_label, 0, 1, 1, 1);
+    metadata_grid.attach(&prep_time_entry, 1, 1, 1, 1);
 
-    // Downtime field
-    let downtime_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
-    let downtime_label = gtk::Label::new(Some("Cook Time (min):"));
-    downtime_label.set_halign(gtk::Align::Start);
-    downtime_label.set_width_chars(12);
-    let downtime_entry = gtk::Entry::new();
-    if let Some(downtime) = recipe.downtime {
-        downtime_entry.set_text(&downtime.to_string());
-    }
-    downtime_entry.set_hexpand(true);
-    downtime_box.append(&downtime_label);
-    downtime_box.append(&downtime_entry);
-
-    // Servings field
-    let servings_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
+    // Servings field (moved next to Prep Time)
     let servings_label = gtk::Label::new(Some("Servings:"));
     servings_label.set_halign(gtk::Align::Start);
-    servings_label.set_width_chars(12);
+    servings_label.set_valign(gtk::Align::Center);
     let servings_entry = gtk::Entry::new();
     if let Some(servings) = recipe.servings {
         servings_entry.set_text(&servings.to_string());
     }
-    servings_entry.set_hexpand(true);
-    servings_box.append(&servings_label);
-    servings_box.append(&servings_entry);
+    servings_entry.set_hexpand(false);
+    servings_entry.set_width_chars(8);
+    servings_entry.set_valign(gtk::Align::Center);
+    metadata_grid.attach(&servings_label, 2, 1, 1, 1);
+    metadata_grid.attach(&servings_entry, 3, 1, 1, 1);
 
-    // Tags field (comma-separated)
-    let tags_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
-    let tags_label = gtk::Label::new(Some("Tags:"));
+    // Downtime field (Cook Time)
+    let downtime_label = gtk::Label::new(Some("Cook Time (min):"));
+    downtime_label.set_halign(gtk::Align::Start);
+    downtime_label.set_valign(gtk::Align::Center);
+    let downtime_entry = gtk::Entry::new();
+    if let Some(downtime) = recipe.downtime {
+        downtime_entry.set_text(&downtime.to_string());
+    }
+    downtime_entry.set_hexpand(false);
+    downtime_entry.set_width_chars(8);
+    downtime_entry.set_valign(gtk::Align::Center);
+    metadata_grid.attach(&downtime_label, 0, 2, 1, 1);
+    metadata_grid.attach(&downtime_entry, 1, 2, 1, 1);
+
+    // Tags field
+    let tags_label = gtk::Label::new(Some("Tags (comma-sep):"));
     tags_label.set_halign(gtk::Align::Start);
-    tags_label.set_width_chars(12);
+    tags_label.set_valign(gtk::Align::Center);
     let tags_entry = gtk::Entry::new();
     tags_entry.set_text(&recipe.tags.clone().unwrap_or_default().join(", "));
     tags_entry.set_hexpand(true);
-    tags_box.append(&tags_label);
-    tags_box.append(&tags_entry);
+    tags_entry.set_valign(gtk::Align::Center);
+    metadata_grid.attach(&tags_label, 0, 3, 1, 1);
+    metadata_grid.attach(&tags_entry, 1, 3, 3, 1);
 
-    // Separator
-    form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    form_container.append(&metadata_grid);
+    // Removed individual appends for title_box, prep_time_box, etc.
+
+    // No separator needed here, metadata_grid already has margin_bottom
 
     // Ingredients section heading
     let ingredients_label = gtk::Label::new(Some("Ingredients"));
     ingredients_label.set_markup("<span weight='bold'>Ingredients</span>");
     ingredients_label.set_halign(gtk::Align::Start);
+    ingredients_label.set_margin_bottom(TAG_SPACING);
     form_container.append(&ingredients_label);
 
     // Ingredients container (will hold ingredient rows)
-    let ingredients_container = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
+    let ingredients_container = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING); // Spacing between ingredient rows
 
     // Collect all ingredient names for completion (if data_manager is available)
     let ingredient_names: Vec<String> = data_manager
@@ -564,8 +576,6 @@ pub fn show_edit_recipe_dialog(
             completion.set_text_column(0);
             completion.set_minimum_key_length(0); // Show dropdown on focus
 
-            // Remove match_func for now to let GTK handle filtering and ensure dropdown works
-            // Show dropdown immediately on focus using EventControllerFocus
             let completion_clone = completion.clone();
             let focus_controller = gtk::EventControllerFocus::new();
             focus_controller.connect_enter(move |_| {
@@ -579,7 +589,7 @@ pub fn show_edit_recipe_dialog(
 
     // Add existing ingredients
     for ingredient in &recipe.ingredients {
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING); // Spacing within an ingredient row
 
         let name_entry = create_name_entry_with_completion(Some(&ingredient.ingredient));
         row.append(&name_entry);
@@ -588,8 +598,8 @@ pub fn show_edit_recipe_dialog(
         if let Some(qty) = &ingredient.quantity {
             qty_entry.set_text(&qty.to_string());
         }
-        qty_entry.set_placeholder_text(Some("Quantity"));
-        qty_entry.set_width_chars(8);
+        qty_entry.set_placeholder_text(Some("Qty"));
+        qty_entry.set_width_chars(6); // Reduced from 8
         row.append(&qty_entry);
 
         let qty_type_entry = gtk::Entry::new();
@@ -597,7 +607,7 @@ pub fn show_edit_recipe_dialog(
             qty_type_entry.set_text(qty_type);
         }
         qty_type_entry.set_placeholder_text(Some("Unit"));
-        qty_type_entry.set_width_chars(8);
+        qty_type_entry.set_width_chars(8); // Kept at 8
         row.append(&qty_type_entry);
 
         let remove_button = gtk::Button::from_icon_name("list-remove");
@@ -619,13 +629,13 @@ pub fn show_edit_recipe_dialog(
     // Add button for ingredients
     let add_ingredient_button = gtk::Button::with_label("Add Ingredient");
     add_ingredient_button.set_halign(gtk::Align::Start);
+    add_ingredient_button.set_margin_top(TAG_SPACING);
 
     let ingredients_container_ref = ingredients_container.clone();
     let ingredient_names_clone = ingredient_names.clone();
     add_ingredient_button.connect_clicked(move |_| {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
 
-        // Use the same helper for new ingredient rows
         let name_entry = {
             let entry = gtk::Entry::new();
             entry.set_placeholder_text(Some("Ingredient name"));
@@ -643,8 +653,6 @@ pub fn show_edit_recipe_dialog(
                 completion.set_model(Some(&store));
                 completion.set_text_column(0);
                 completion.set_minimum_key_length(0);
-                // Remove match_func for now to let GTK handle filtering and ensure dropdown works
-                // Show dropdown immediately on focus using EventControllerFocus
                 let completion_clone = completion.clone();
                 let focus_controller = gtk::EventControllerFocus::new();
                 focus_controller.connect_enter(move |_| {
@@ -658,8 +666,8 @@ pub fn show_edit_recipe_dialog(
         row.append(&name_entry);
 
         let qty_entry = gtk::Entry::new();
-        qty_entry.set_placeholder_text(Some("Quantity"));
-        qty_entry.set_width_chars(8);
+        qty_entry.set_placeholder_text(Some("Qty"));
+        qty_entry.set_width_chars(6);
         row.append(&qty_entry);
 
         let qty_type_entry = gtk::Entry::new();
@@ -685,55 +693,92 @@ pub fn show_edit_recipe_dialog(
 
     // Image section
     let image_section = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
+    image_section.set_valign(gtk::Align::Center);
+    image_section.set_margin_top(TAG_SPACING);
+    image_section.set_margin_bottom(TAG_SPACING);
+
     let image_preview = if let Some(image_name) = &recipe.image {
         if let Some(dm) = &data_manager {
             let data_dir = dm.get_data_dir();
             let img_path = data_dir.join("recipes/img").join(image_name);
             if img_path.exists() {
                 let img = gtk::Image::from_file(img_path);
-                img.set_pixel_size(64);
+                img.set_pixel_size(100);
+                img.set_size_request(100, 100); // Ensure size request
+                img.set_visible(true); // Ensure visible
                 img
             } else {
-                gtk::Image::new()
+                let img = gtk::Image::new();
+                img.set_pixel_size(100);
+                img.set_size_request(100, 100); // Ensure size request
+                img.set_visible(true); // Ensure visible
+                img
             }
         } else {
-            gtk::Image::new()
+            let img = gtk::Image::new();
+            img.set_pixel_size(100);
+            img.set_size_request(100, 100); // Ensure size request
+            img.set_visible(true); // Ensure visible
+            img
         }
     } else {
-        gtk::Image::new()
+        let img = gtk::Image::new();
+        img.set_pixel_size(100); // Ensure consistent size for placeholder
+        img.set_size_request(100, 100); // Ensure size request
+        img.set_visible(true); // Ensure visible
+        img
     };
+    image_preview.set_margin_end(SECTION_SPACING);
     image_section.append(&image_preview);
+
+    let image_buttons_box = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
     let set_image_button = gtk::Button::with_label("Set Image");
     let clear_image_button = gtk::Button::with_label("Clear Image");
-    // Track if the image was cleared
+    image_buttons_box.append(&set_image_button);
+    image_buttons_box.append(&clear_image_button);
+    image_section.append(&image_buttons_box);
+    
     let cleared_image: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
-    // For updating preview and state
     let image_preview_clone = image_preview.clone();
-    let recipe_image_field_clone = recipe.image.clone();
+    let recipe_image_field_clone = recipe.image.clone(); 
     let cleared_image_clone = cleared_image.clone();
+    // Clone selected_image_path for the clear_image_button closure *before* it's potentially moved.
+    let selected_image_path_for_clear = selected_image_path.clone(); 
+
     clear_image_button.connect_clicked(move |_| {
-        if recipe_image_field_clone.is_some() {
-            image_preview_clone.set_from_pixbuf(None::<&gdk_pixbuf::Pixbuf>);
-            *cleared_image_clone.borrow_mut() = recipe_image_field_clone.clone();
-            // Optionally, set selected_image_path to None as well
+        if recipe_image_field_clone.is_some() { 
+            image_preview_clone.set_from_pixbuf(None::<&gdk_pixbuf::Pixbuf>); 
+            *cleared_image_clone.borrow_mut() = recipe_image_field_clone.clone(); 
+            *selected_image_path_for_clear.borrow_mut() = None; // Use the pre-cloned version
         }
     });
-    let selected_image_path_clone = selected_image_path.clone();
+
+    let selected_image_path_clone = selected_image_path.clone(); // Used in set_image_button closure
+    let image_preview_clone_for_set = image_preview.clone(); // Separate clone for set_image_button
+    let cleared_image_clone_for_set = cleared_image.clone(); // If user sets then clears, then sets again
     set_image_button.connect_clicked(move |_| {
         let file_chooser = gtk::FileChooserNative::new(
             Some("Select Recipe Image"),
-            None::<&gtk::Window>,
+            None::<&gtk::Window>, // No direct parent window for native dialog
             gtk::FileChooserAction::Open,
             Some("Open"),
             Some("Cancel"),
         );
-        file_chooser.set_modal(true);
+        file_chooser.set_modal(true); // Make it modal to the application
+
+        // Need to clone for the inner closure
         let selected_image_path_clone_inner = selected_image_path_clone.clone();
+        let image_preview_clone_inner = image_preview_clone_for_set.clone();
+        let cleared_image_clone_inner = cleared_image_clone_for_set.clone();
+
         file_chooser.connect_response(move |dialog, response| {
             if response == gtk::ResponseType::Accept {
                 if let Some(file) = dialog.file() {
                     if let Some(path) = file.path() {
+                        image_preview_clone_inner.set_from_file(Some(&path));
+                        image_preview_clone_inner.set_visible(true);
                         *selected_image_path_clone_inner.borrow_mut() = Some(path);
+                        *cleared_image_clone_inner.borrow_mut() = None; // New image selected, so not clearing
                     }
                 }
             }
@@ -741,44 +786,47 @@ pub fn show_edit_recipe_dialog(
         });
         file_chooser.show();
     });
-    image_section.append(&set_image_button);
-    image_section.append(&clear_image_button);
-    form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-    form_container.append(&image_section);
 
-    // Instructions section (create before closure so it's in scope)
+    // Instructions section
     let instructions_label = gtk::Label::new(Some("Instructions"));
     instructions_label.set_markup("<span weight='bold'>Instructions</span>");
     instructions_label.set_halign(gtk::Align::Start);
+    instructions_label.set_margin_bottom(TAG_SPACING); // Add some space before the text view
     let instructions_text_view = gtk::TextView::new();
     instructions_text_view.set_wrap_mode(gtk::WrapMode::Word);
     instructions_text_view.set_hexpand(true);
-    instructions_text_view.set_vexpand(false);
-    instructions_text_view.set_height_request(120);
+    instructions_text_view.set_vexpand(true);
+    instructions_text_view.set_height_request(150); 
     instructions_text_view.buffer().set_text(&recipe.instructions);
 
-    // Append all field widgets to form_container in the correct order
-    form_container.append(&title_box);
-    form_container.append(&prep_time_box);
-    form_container.append(&downtime_box);
-    form_container.append(&servings_box);
-    form_container.append(&tags_box);
+    // --- REVISED APPEND ORDER FOR form_container ---
+    form_container.append(&metadata_grid);
     form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+
     form_container.append(&ingredients_label);
+
+    // Ensure ingredients_container is visible and has some minimum space
+    ingredients_container.set_visible(true);
+    ingredients_container.set_height_request(100); // Request minimum 100px height
     form_container.append(&ingredients_container);
+
+    // Ensure add_ingredient_button is visible
+    add_ingredient_button.set_visible(true);
     form_container.append(&add_ingredient_button);
     form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+
     form_container.append(&image_section);
     form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+
     form_container.append(&instructions_label);
     form_container.append(&instructions_text_view);
     form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    // --- END OF REVISED APPEND ORDER ---
 
     scrolled_window.set_child(Some(&form_container));
     content_area.append(&scrolled_window);
 
-    // Clone image field to avoid borrow checker issues in closure
-    let recipe_image_field = recipe.image.clone();
+    let recipe_image_field = recipe.image.clone(); // Used in the main save response closure
     // Clones for closure
     let sender_clone = sender.clone();
     let recipe_title_clone = recipe_title.clone();
@@ -788,8 +836,16 @@ pub fn show_edit_recipe_dialog(
     // Determine if this is an add or update dialog
     let is_add = recipe_title.is_empty();
 
-    dialog.add_button("Cancel", gtk::ResponseType::Cancel);
-    dialog.add_button("Save", gtk::ResponseType::Accept);
+    let _cancel_button = dialog.add_button("Cancel", gtk::ResponseType::Cancel);
+    let save_button = dialog.add_button("Save", gtk::ResponseType::Accept);
+
+    // Style action area - get the parent of one of the buttons
+    if let Some(button_parent) = save_button.parent() {
+        if let Some(action_area_box) = button_parent.downcast_ref::<gtk::Box>() {
+            action_area_box.set_margin_all(DEFAULT_MARGIN); // Add margin around the action buttons area
+            action_area_box.set_spacing(SECTION_SPACING.try_into().unwrap_or(0));
+        }
+    }
 
     dialog.connect_response(move |dialog, response| {
         if response == gtk::ResponseType::Accept {

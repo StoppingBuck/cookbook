@@ -20,3 +20,22 @@ image: Mashed_Potatoes.jpg
 ---
 Boil potatoes. Mash with milk and butter until smooth.
 Get a nervous breakdown.
+as
+sa
+
+sas
+a
+sa
+sa
+sa
+sa
+as
+sa
+sa
+sa
+sa
+sa
+sa
+sa
+s
+a
