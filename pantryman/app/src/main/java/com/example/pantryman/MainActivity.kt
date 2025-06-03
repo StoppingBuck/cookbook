@@ -8,6 +8,8 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.appcompat.app.AlertDialog
 import android.view.LayoutInflater
 import android.util.Log
+import android.content.Intent
+import android.content.SharedPreferences
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 
 class MainActivity : AppCompatActivity() {
@@ -16,25 +18,62 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adapter: IngredientsAdapter
     private lateinit var categorySpinner: Spinner
     private lateinit var addButton: FloatingActionButton
+    private lateinit var settingsButton: Button
+    private lateinit var statusText: TextView
+    private lateinit var sharedPreferences: SharedPreferences
     
     private var allIngredients = listOf<Ingredient>()
     private var categories = listOf<String>()
+
+    companion object {
+        private const val PREFS_NAME = "PantrymanPrefs"
+        private const val PREF_DATA_DIR = "data_directory"
+        private const val DEFAULT_DATA_DIR = "cookbook_data" // relative to internal storage
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         
+        // Hide the action bar to prevent overlap with buttons
+        supportActionBar?.hide()
+        
         Log.d("MainActivity", "=== PANTRYMAN APP STARTING ===")
         Log.d("MainActivity", "onCreate called")
+        
+        sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         
         initializeViews()
         initializeCookbookEngine()
         setupCategorySpinner()
         setupRecyclerView()
         setupAddButton()
+        setupSettingsButton()
         loadIngredients()
         
         Log.d("MainActivity", "=== PANTRYMAN APP STARTUP COMPLETE ===")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Log.d("MainActivity", "onResume called")
+        
+        // Check if data directory has changed
+        val currentDataDir = getDataDirectory()
+        val engineDataDir = if (::cookbookEngine.isInitialized) {
+            // We don't have direct access to the engine's data path, so we'll reinitialize if needed
+            // For now, just reinitialize the engine to be safe
+            try {
+                cookbookEngine = CookbookEngine(currentDataDir)
+                loadIngredients()
+                Log.d("MainActivity", "Reloaded ingredients after resume")
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Failed to reload ingredients on resume", e)
+                updateStatusText("Failed to reload ingredients: ${e.message}", true)
+            }
+        } else {
+            Log.d("MainActivity", "Engine not initialized, skipping reload")
+        }
     }
 
     private fun initializeViews() {
@@ -42,13 +81,15 @@ class MainActivity : AppCompatActivity() {
         recyclerView = findViewById(R.id.recyclerViewIngredients)
         categorySpinner = findViewById(R.id.spinnerCategory)
         addButton = findViewById(R.id.buttonAdd)
+        settingsButton = findViewById(R.id.buttonSettings)
+        statusText = findViewById(R.id.statusText)
         Log.d("MainActivity", "Views initialized successfully")
     }
 
     private fun initializeCookbookEngine() {
         try {
-            // Use app's internal storage for data directory
-            val dataPath = filesDir.absolutePath + "/cookbook_data"
+            // Get data directory from preferences or use default
+            val dataPath = getDataDirectory()
             
             // Create data directory if it doesn't exist
             val dataDir = java.io.File(dataPath)
@@ -65,6 +106,23 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed to initialize CookbookEngine", e)
             showError("Failed to initialize cookbook engine: ${e.message}")
+        }
+    }
+    
+    private fun getDataDirectory(): String {
+        val savedPath = sharedPreferences.getString(PREF_DATA_DIR, null)
+        return if (savedPath != null) {
+            // Handle both file:// URIs and regular paths
+            if (savedPath.startsWith("content://")) {
+                // For now, fall back to default if it's a content URI
+                // TODO: Implement proper content URI to file path conversion
+                Log.w("MainActivity", "Content URI data directories not yet fully supported, using default")
+                "${filesDir.absolutePath}/$DEFAULT_DATA_DIR"
+            } else {
+                savedPath
+            }
+        } else {
+            "${filesDir.absolutePath}/$DEFAULT_DATA_DIR"
         }
     }
     
@@ -151,13 +209,53 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupAddButton() {
+        Log.d("MainActivity", "Setting up add button click listener")
+        Log.d("MainActivity", "Add button isClickable: ${addButton.isClickable}")
+        Log.d("MainActivity", "Add button isFocusable: ${addButton.isFocusable}")
+        Log.d("MainActivity", "Add button isEnabled: ${addButton.isEnabled}")
+        
         addButton.setOnClickListener {
+            Log.w("MainActivity", "*** ADD BUTTON CLICKED ***")
             showAddIngredientDialog()
+        }
+        
+        // Also try setting an onTouchListener for debugging
+        addButton.setOnTouchListener { view, event ->
+            Log.w("MainActivity", "*** ADD BUTTON TOUCHED *** - action: ${event.action}")
+            false // Return false to allow normal click handling
+        }
+    }
+
+    private fun setupSettingsButton() {
+        Log.d("MainActivity", "Setting up settings button click listener")
+        Log.d("MainActivity", "Settings button isClickable: ${settingsButton.isClickable}")
+        Log.d("MainActivity", "Settings button isFocusable: ${settingsButton.isFocusable}")
+        Log.d("MainActivity", "Settings button isEnabled: ${settingsButton.isEnabled}")
+        
+        settingsButton.setOnClickListener {
+            Log.w("MainActivity", "*** SETTINGS BUTTON CLICKED ***")
+            val intent = Intent(this, SettingsActivity::class.java)
+            startActivity(intent)
+        }
+        
+        // Also try setting an onTouchListener for debugging
+        settingsButton.setOnTouchListener { view, event ->
+            Log.w("MainActivity", "*** SETTINGS BUTTON TOUCHED *** - action: ${event.action}")
+            false // Return false to allow normal click handling
+        }
+    }
+
+    private fun updateStatusText(message: String?, visible: Boolean = true) {
+        statusText.visibility = if (visible) android.view.View.VISIBLE else android.view.View.GONE
+        if (message != null) {
+            statusText.text = message
         }
     }
 
     private fun loadIngredients() {
         Log.d("MainActivity", "loadIngredients() called")
+        updateStatusText("Loading ingredients...", true)
+        
         try {
             allIngredients = cookbookEngine.getAllIngredients()
             Log.d("MainActivity", "Loaded ${allIngredients.size} ingredients")
@@ -175,9 +273,13 @@ class MainActivity : AppCompatActivity() {
             // Show all ingredients initially
             filterByCategory(null)
             
+            // Hide loading text when successful
+            updateStatusText(null, false)
+            
             Log.d("MainActivity", "Ingredients loaded and displayed successfully")
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed to load ingredients", e)
+            updateStatusText("Failed to load ingredients: ${e.message}", true)
             showError("Failed to load ingredients: ${e.message}")
         }
     }
@@ -192,9 +294,69 @@ class MainActivity : AppCompatActivity() {
         adapter.updateIngredients(filteredIngredients)
     }
 
-    private fun updatePantryStatus(ingredient: Ingredient, isInPantry: Boolean) {
+    private fun showEditPantryDialog(ingredient: Ingredient) {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_edit_pantry, null)
+        val ingredientNameText = dialogView.findViewById<TextView>(R.id.textViewIngredientName)
+        val quantityEdit = dialogView.findViewById<EditText>(R.id.editTextQuantity)
+        val quantityTypeSpinner = dialogView.findViewById<Spinner>(R.id.spinnerQuantityType)
+        val inPantryCheckbox = dialogView.findViewById<CheckBox>(R.id.checkBoxInPantry)
+
+        // Set ingredient name
+        ingredientNameText.text = ingredient.name
+
+        // Set up quantity type spinner
+        val quantityTypes = listOf("", "kg", "g", "lb", "oz", "pieces", "cups", "tbsp", "tsp", "ml", "l", "fl oz")
+        val spinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, quantityTypes)
+        spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        quantityTypeSpinner.adapter = spinnerAdapter
+
+        // Pre-fill with current values
+        inPantryCheckbox.isChecked = ingredient.isInPantry
+        ingredient.quantity?.let { quantityEdit.setText(it) }
+        ingredient.quantityType?.let { currentType ->
+            val index = quantityTypes.indexOf(currentType)
+            if (index >= 0) {
+                quantityTypeSpinner.setSelection(index)
+            }
+        }
+
+        // Enable/disable quantity fields based on pantry status
+        val enableQuantityFields = { enabled: Boolean ->
+            quantityEdit.isEnabled = enabled
+            quantityTypeSpinner.isEnabled = enabled
+            if (!enabled) {
+                quantityEdit.setText("")
+                quantityTypeSpinner.setSelection(0)
+            }
+        }
+
+        enableQuantityFields(ingredient.isInPantry)
+        
+        inPantryCheckbox.setOnCheckedChangeListener { _, isChecked ->
+            enableQuantityFields(isChecked)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Edit Pantry Status")
+            .setView(dialogView)
+            .setPositiveButton("Save") { _, _ ->
+                val isInPantry = inPantryCheckbox.isChecked
+                val quantity = if (isInPantry && quantityEdit.text.toString().isNotEmpty()) {
+                    quantityEdit.text.toString().toDoubleOrNull()
+                } else null
+                val quantityType = if (isInPantry && quantityTypeSpinner.selectedItemPosition > 0) {
+                    quantityTypes[quantityTypeSpinner.selectedItemPosition]
+                } else null
+                
+                updatePantryStatus(ingredient, isInPantry, quantity, quantityType)
+            }
+            .setNegativeButton("Cancel") { dialog, _ -> dialog.dismiss() }
+            .show()
+    }
+
+    private fun updatePantryStatus(ingredient: Ingredient, isInPantry: Boolean, quantity: Double? = null, quantityType: String? = null) {
         try {
-            cookbookEngine.updatePantryStatus(ingredient.name, isInPantry)
+            cookbookEngine.updatePantryStatus(ingredient.name, isInPantry, quantity, quantityType)
             
             // Update local data
             val updatedIngredients = allIngredients.map { 
@@ -219,6 +381,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Simplified version for checkbox toggles
+    private fun updatePantryStatus(ingredient: Ingredient, isInPantry: Boolean) {
+        updatePantryStatus(ingredient, isInPantry, null, null)
+    }
+
     private fun showIngredientDetails(ingredient: Ingredient) {
         AlertDialog.Builder(this)
             .setTitle(ingredient.name)
@@ -238,6 +405,7 @@ class MainActivity : AppCompatActivity() {
             })
             .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
             .setNeutralButton("Edit") { _, _ -> showEditIngredientDialog(ingredient) }
+            .setNegativeButton("Edit Pantry") { _, _ -> showEditPantryDialog(ingredient) }
             .show()
     }
 

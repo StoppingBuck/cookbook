@@ -27,9 +27,24 @@
             android:id="@+id/buttonAdd"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
+            android:layout_marginStart="8dp"
             android:src="@android:drawable/ic_input_add"
-            app:fabSize="mini" />
+            app:fabSize="normal"
+            android:backgroundTint="#FF5722"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <Button
+            android:id="@+id/buttonSettings"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_marginStart="8dp"
+            android:text="⚙"
+            android:textSize="20sp"
+            android:background="#4CAF50"
+            android:textColor="#FFFFFF"
+            android:clickable="true"
+            android:focusable="true" />
 
     </LinearLayout>
 
