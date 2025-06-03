@@ -1,9 +1,13 @@
 # Cargo Rust
 /target/
+**/target/
 **/*.rs.bk
 **/*.rs.bak
 **/*.swp
 **/*.swo
+*.so
+*.a
+*.dylib
 
 # Editorfiler (VS Code, JetBrains, etc.)
 .vscode/
@@ -28,6 +32,24 @@ node_modules/
 
 # Rust-analyser
 rust-project.json
+
+# Android (Gradle, APK builds, etc.)
+.gradle/
+local.properties
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.ap_*
+*.aab
+output.json
+
+# Android NDK
+android-ndk*/
+
+# JNI libs
+*.jnilib
 
 thoughts
 /example/

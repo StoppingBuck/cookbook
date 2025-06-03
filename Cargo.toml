@@ -5,3 +5,7 @@ members = [
     "cookbook-engine",
     "cookbook-gtk"
 ]
+
+exclude = [
+    "pantryman/rust-bridge"
+]

@@ -158,6 +158,18 @@ A coming  GUI frontend, targeting KDE (Plasma) desktop users. Not yet implemente
 ## 4. `cookbook-shared`
 This is types or utils that are shared between engine and GUI or between different GUIs, to avoid code duplication.
 
+## 5. `pantryman`
+This app is an Android app that allows users to easily create, edit or delete ingredients from their pantry.
+The "data" folder containing the actual ingredients and pantry are YAML files. Reading and writing to these files is done using an existing Rust crate called `cookbook-engine`. This is currently in development and is not yet available on crates.io. The crate is located in the folder `cookbook-engine`.
+
+In order to simplify things, the app should use Rust whenever sensible.
+
+The goal of the app is simple: Display a list of ingredients, with a clear indicator of which ones are in the pantrtry. Then, makke it easy for the user to create new ingredients, add ingredients to the pantry, edit ingredients in the pantry (like quantity), and delete ingredients from the pantry.
+The app should be simple and easy to use. It should not have any unnecessary features or complexity. The app should be designed for a single user, and should not have any multi-user features.
+
+There should not be any implicit sync logic in the app: It should just use the engine to interface with the data_dir. Then the user can use whatever sync method they want to sync the data_dir with other devices.
+
+
 ## Code Style & Expectations
 - Favor clean separation of concerns: logic in `engine`, UI in frontend.
 - Keep interfaces predictable and ergonomic for GUI devs.

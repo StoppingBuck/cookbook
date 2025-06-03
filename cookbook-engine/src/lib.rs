@@ -438,7 +438,10 @@ impl DataManager {
         // Path to the canonical KB directory in the engine crate
         let kb_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/kb");
         if !kb_dir.exists() {
-            return Err(CookbookError::DataDirError(format!("Knowledge Base directory not found: {:?}", kb_dir)));
+            // KB directory doesn't exist - this is OK for applications that don't need KB functionality
+            // (like the pantryman app which only manages pantry/ingredients)
+            eprintln!("Warning: Knowledge Base directory not found: {:?} - continuing without KB entries", kb_dir);
+            return Ok(());
         }
 
         // Read the contents of the kb directory
