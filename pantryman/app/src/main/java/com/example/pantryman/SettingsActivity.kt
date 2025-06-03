@@ -15,6 +15,8 @@ import androidx.documentfile.provider.DocumentFile
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 
 class SettingsActivity : AppCompatActivity() {
     
@@ -180,15 +182,77 @@ class SettingsActivity : AppCompatActivity() {
     
     private fun migrateDataToNewDirectory(uri: Uri) {
         try {
-            // TODO: Implement migration logic
-            // For now, just save the new directory and show a message
+            updateCurrentDataDir() // Update display first
+            
+            val sourceDir = File(getCurrentSourceDataDirectory())
+            val targetDir = DocumentFile.fromTreeUri(this, uri)
+            
+            if (targetDir == null) {
+                showError("Failed to access target directory")
+                return
+            }
+            
+            Log.d("SettingsActivity", "Starting migration from ${sourceDir.absolutePath} to ${targetDir.uri}")
+            
+            // Create cookbook data structure in target directory
+            val ingredientsDir = targetDir.createDirectory("ingredients")
+            val recipesDir = targetDir.createDirectory("recipes")
+            
+            if (ingredientsDir == null || recipesDir == null) {
+                showError("Failed to create directory structure in target location")
+                return
+            }
+            
+            // Copy pantry.yaml
+            val pantryFile = File(sourceDir, "pantry.yaml")
+            if (pantryFile.exists()) {
+                val pantryTarget = targetDir.createFile("application/x-yaml", "pantry.yaml")
+                if (pantryTarget != null) {
+                    copyFileToDocument(pantryFile, pantryTarget)
+                    Log.d("SettingsActivity", "Copied pantry.yaml")
+                }
+            }
+            
+            // Copy ingredients directory
+            val sourceIngredients = File(sourceDir, "ingredients")
+            if (sourceIngredients.exists() && sourceIngredients.isDirectory()) {
+                sourceIngredients.listFiles()?.forEach { file ->
+                    if (file.isFile && file.name.endsWith(".yaml")) {
+                        val targetFile = ingredientsDir.createFile("application/x-yaml", file.name)
+                        if (targetFile != null) {
+                            copyFileToDocument(file, targetFile)
+                            Log.d("SettingsActivity", "Copied ingredient: ${file.name}")
+                        }
+                    }
+                }
+            }
+            
+            // Copy recipes directory
+            val sourceRecipes = File(sourceDir, "recipes")
+            if (sourceRecipes.exists() && sourceRecipes.isDirectory()) {
+                sourceRecipes.listFiles()?.forEach { file ->
+                    if (file.isFile && file.name.endsWith(".md")) {
+                        val targetFile = recipesDir.createFile("text/markdown", file.name)
+                        if (targetFile != null) {
+                            copyFileToDocument(file, targetFile)
+                            Log.d("SettingsActivity", "Copied recipe: ${file.name}")
+                        }
+                    }
+                }
+            }
+            
+            // Save the new directory preference
             val uriString = uri.toString()
             sharedPreferences.edit()
                 .putString(PREF_DATA_DIR, uriString)
                 .apply()
                 
             updateCurrentDataDir()
-            Toast.makeText(this, "Data directory updated. Restart the app to use the new location.", Toast.LENGTH_LONG).show()
+            
+            // Notify MainActivity of the change and switch without restart
+            notifyMainActivityOfDirectoryChange()
+            
+            Toast.makeText(this, "Data migration completed successfully!", Toast.LENGTH_LONG).show()
             
         } catch (e: Exception) {
             Log.e("SettingsActivity", "Failed to migrate data", e)
@@ -204,11 +268,58 @@ class SettingsActivity : AppCompatActivity() {
                 .apply()
                 
             updateCurrentDataDir()
-            Toast.makeText(this, "Data directory updated. Restart the app to use the new data.", Toast.LENGTH_LONG).show()
+            
+            // Notify MainActivity of the change and switch without restart
+            notifyMainActivityOfDirectoryChange()
+            
+            Toast.makeText(this, "Switched to new data directory successfully!", Toast.LENGTH_LONG).show()
             
         } catch (e: Exception) {
             Log.e("SettingsActivity", "Failed to switch directory", e)
             showError("Failed to switch directory: ${e.message}")
+        }
+    }
+    
+    /**
+     * Copy a file from internal storage to a DocumentFile location
+     */
+    private fun copyFileToDocument(sourceFile: File, targetDocument: DocumentFile) {
+        try {
+            sourceFile.inputStream().use { input ->
+                contentResolver.openOutputStream(targetDocument.uri)?.use { output ->
+                    input.copyTo(output)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("SettingsActivity", "Failed to copy file ${sourceFile.name}", e)
+            throw e
+        }
+    }
+    
+    /**
+     * Get the current source data directory (for migration purposes)
+     */
+    private fun getCurrentSourceDataDirectory(): String {
+        val savedPath = sharedPreferences.getString(PREF_DATA_DIR, null)
+        return if (savedPath?.startsWith("content://") == true) {
+            // If we're currently using a content URI, fall back to the default internal storage
+            "${filesDir.absolutePath}/$DEFAULT_DATA_DIR"
+        } else {
+            savedPath ?: "${filesDir.absolutePath}/$DEFAULT_DATA_DIR"
+        }
+    }
+    
+    /**
+     * Notify MainActivity that the data directory has changed so it can reinitialize
+     */
+    private fun notifyMainActivityOfDirectoryChange() {
+        try {
+            // Send a result back to MainActivity indicating the directory changed
+            setResult(Activity.RESULT_OK, Intent().apply {
+                putExtra("data_directory_changed", true)
+            })
+        } catch (e: Exception) {
+            Log.w("SettingsActivity", "Failed to notify MainActivity of directory change", e)
         }
     }
     

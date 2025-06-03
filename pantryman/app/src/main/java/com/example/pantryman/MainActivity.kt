@@ -10,6 +10,7 @@ import android.view.LayoutInflater
 import android.util.Log
 import android.content.Intent
 import android.content.SharedPreferences
+import android.app.Activity
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 
 class MainActivity : AppCompatActivity() {
@@ -29,6 +30,7 @@ class MainActivity : AppCompatActivity() {
         private const val PREFS_NAME = "PantrymanPrefs"
         private const val PREF_DATA_DIR = "data_directory"
         private const val DEFAULT_DATA_DIR = "cookbook_data" // relative to internal storage
+        private const val REQUEST_CODE_SETTINGS = 2001
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,19 +60,9 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         Log.d("MainActivity", "onResume called")
         
-        // Check if data directory has changed
-        val currentDataDir = getDataDirectory()
-        val engineDataDir = if (::cookbookEngine.isInitialized) {
-            // We don't have direct access to the engine's data path, so we'll reinitialize if needed
-            // For now, just reinitialize the engine to be safe
-            try {
-                cookbookEngine = CookbookEngine(currentDataDir)
-                loadIngredients()
-                Log.d("MainActivity", "Reloaded ingredients after resume")
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Failed to reload ingredients on resume", e)
-                updateStatusText("Failed to reload ingredients: ${e.message}", true)
-            }
+        // Check if data directory has changed and reinitialize if necessary
+        if (::cookbookEngine.isInitialized) {
+            handleDataDirectoryChange()
         } else {
             Log.d("MainActivity", "Engine not initialized, skipping reload")
         }
@@ -235,7 +227,7 @@ class MainActivity : AppCompatActivity() {
         settingsButton.setOnClickListener {
             Log.w("MainActivity", "*** SETTINGS BUTTON CLICKED ***")
             val intent = Intent(this, SettingsActivity::class.java)
-            startActivity(intent)
+            startActivityForResult(intent, REQUEST_CODE_SETTINGS)
         }
         
         // Also try setting an onTouchListener for debugging
@@ -494,6 +486,68 @@ class MainActivity : AppCompatActivity() {
             .show()
         
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    /**
+     * Reinitialize the cookbook engine with a new data directory
+     * This allows for dynamic data directory switching without app restart
+     */
+    fun reinitializeWithNewDataDirectory(newDataPath: String): Boolean {
+        return try {
+            Log.d("MainActivity", "Reinitializing cookbook engine with new data directory: $newDataPath")
+            updateStatusText("Switching to new data directory...", true)
+            
+            // Create new data directory if it doesn't exist
+            val dataDir = java.io.File(newDataPath)
+            if (!dataDir.exists()) {
+                dataDir.mkdirs()
+                Log.d("MainActivity", "Created new data directory: $newDataPath")
+            }
+            
+            // Initialize new cookbook engine
+            val newEngine = CookbookEngine(newDataPath)
+            
+            // If successful, replace the old engine
+            cookbookEngine = newEngine
+            Log.d("MainActivity", "Successfully switched to new data directory")
+            
+            // Reload ingredients with new engine
+            loadIngredients()
+            
+            updateStatusText("Switched to new data directory successfully", true)
+            // Hide status after a delay
+            statusText.postDelayed({
+                updateStatusText(null, false)
+            }, 2000)
+            
+            true
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to reinitialize with new data directory", e)
+            updateStatusText("Failed to switch data directory: ${e.message}", true)
+            false
+        }
+    }
+    
+    /**
+     * Handle data directory change from settings
+     * Called when user selects a new data directory in SettingsActivity
+     */
+    fun handleDataDirectoryChange() {
+        Log.d("MainActivity", "Handling data directory change")
+        val newDataPath = getDataDirectory()
+        reinitializeWithNewDataDirectory(newDataPath)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        
+        if (requestCode == REQUEST_CODE_SETTINGS && resultCode == Activity.RESULT_OK) {
+            val dataDirectoryChanged = data?.getBooleanExtra("data_directory_changed", false) ?: false
+            if (dataDirectoryChanged) {
+                Log.d("MainActivity", "Data directory changed, reinitializing engine")
+                handleDataDirectoryChange()
+            }
+        }
     }
 
     override fun onDestroy() {
