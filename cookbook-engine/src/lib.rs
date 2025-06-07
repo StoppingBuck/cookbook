@@ -3,6 +3,7 @@ use std::fs;                                    // For file operations
 use std::path::{Path, PathBuf};                 // For handling file paths
 use thiserror::Error;                           // For error handling
 use std::collections::HashMap;                  // For storing ingredients and recipes
+use log::{debug, info, warn, error};            // For logging
 
 /*
 The #[derive(...)] attribute in Rust allows you to automatically implement certain traits for your custom data types without having to write the implementation code manually. In this specific case, four important traits are being derived:
@@ -291,12 +292,27 @@ impl DataManager {
     /// Returns an error if the directory does not exist or if any data loading fails
     /// The data_dir parameter is the path to the directory containing the cookbook data files
     pub fn new<P: AsRef<Path>>(data_dir: P) -> Result<Self, CookbookError> {
+        // Initialize Android logging if we're on Android
+        #[cfg(target_os = "android")]
+        {
+            let _ = android_logger::init_once(
+                android_logger::Config::default()
+                    .with_max_level(log::LevelFilter::Debug)
+                    .with_tag("CookbookEngine")
+            );
+        }
+        
         let data_dir = data_dir.as_ref().to_path_buf(); // Convert data_dir to PathBuf
+        info!("DataManager::new called with data_dir: {:?}", data_dir);
+        
         // Check if the directory exists
         // If it doesn't exist, return an error
         if !data_dir.exists() {
+            error!("Data directory does not exist: {:?}", data_dir);
             return Err(CookbookError::DataDirError(format!("Directory not found: {:?}", data_dir)));
         }
+        
+        info!("Data directory exists, creating DataManager...");
         
         // Create a new DataManager instance
         // Initialize the ingredients HashMap, recipes Vec, pantry Option, and kb_entries HashMap
@@ -308,9 +324,12 @@ impl DataManager {
             kb_entries: HashMap::new(),
         };
         
+        info!("Loading data...");
+        
         // Load all data
         manager.load_data()?;
         
+        info!("DataManager created successfully");
         Ok(manager) // Return the DataManager instance
     }
     
@@ -414,9 +433,33 @@ impl DataManager {
     /// The pantry items should be stored in the items field of the Pantry struct
     fn load_pantry(&mut self) -> Result<(), CookbookError> {
         let pantry_path = self.data_dir.join("pantry.yaml");    // Path to the pantry.yaml file
+        info!("Attempting to load pantry from: {:?}", pantry_path);
+        
         // Check if the pantry.yaml file exists
         if pantry_path.exists() {
-            self.pantry = Some(Pantry::from_file(&pantry_path)?);
+            info!("pantry.yaml file exists, attempting to load...");
+            match Pantry::from_file(&pantry_path) {
+                Ok(pantry) => {
+                    info!("Successfully loaded pantry with {} items", pantry.items.len());
+                    for item in &pantry.items {
+                        info!("Pantry item: {} (qty: {:?} {})", item.ingredient, item.quantity, item.quantity_type);
+                    }
+                    self.pantry = Some(pantry);
+                    info!("Pantry successfully stored in DataManager");
+                }
+                Err(e) => {
+                    error!("Failed to load pantry from file: {:?}", e);
+                    return Err(e);
+                }
+            }
+        } else {
+            warn!("pantry.yaml file does not exist at: {:?}", pantry_path);
+            info!("Creating empty pantry since file doesn't exist");
+            // Create an empty pantry if the file doesn't exist
+            self.pantry = Some(Pantry {
+                version: 1,
+                items: Vec::new(),
+            });
         }
         
         Ok(())  // Return Ok if the pantry is loaded successfully
@@ -479,9 +522,14 @@ impl DataManager {
     /// The ingredient_name parameter is the name of the ingredient to check
     /// The ingredient_name should match the name field in the Ingredient struct
     pub fn is_in_pantry(&self, ingredient_name: &str) -> bool {
+        debug!("Checking if '{}' is in pantry", ingredient_name);
         if let Some(pantry) = &self.pantry {
-            pantry.items.iter().any(|item| item.ingredient == ingredient_name)
+            debug!("Pantry exists with {} items", pantry.items.len());
+            let result = pantry.items.iter().any(|item| item.ingredient == ingredient_name);
+            debug!("'{}' in pantry: {}", ingredient_name, result);
+            result
         } else {
+            warn!("No pantry loaded when checking for ingredient '{}'", ingredient_name);
             false
         }
     }
@@ -490,9 +538,18 @@ impl DataManager {
     /// Returns an Option containing a reference to the PantryItem if found, or None if not found
     /// The ingredient_name parameter is the name of the ingredient to check
     pub fn get_pantry_item(&self, ingredient_name: &str) -> Option<&PantryItem> {
+        debug!("Getting pantry item for '{}'", ingredient_name);
         if let Some(pantry) = &self.pantry {
-            pantry.items.iter().find(|item| item.ingredient == ingredient_name)
+            debug!("Searching through {} pantry items", pantry.items.len());
+            let result = pantry.items.iter().find(|item| item.ingredient == ingredient_name);
+            if let Some(item) = result {
+                debug!("Found pantry item: {} (qty: {:?} {})", item.ingredient, item.quantity, item.quantity_type);
+            } else {
+                debug!("No pantry item found for '{}'", ingredient_name);
+            }
+            result
         } else {
+            warn!("No pantry loaded when getting pantry item for '{}'", ingredient_name);
             None
         }
     }

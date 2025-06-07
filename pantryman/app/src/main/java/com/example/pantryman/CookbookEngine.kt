@@ -1,5 +1,6 @@
 package com.example.pantryman
 
+import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
@@ -38,9 +39,18 @@ class CookbookEngine(dataDir: String) {
      * Get all ingredients with their pantry status
      */
     fun getAllIngredients(): List<Ingredient> {
+        Log.d("CookbookEngine", "=== getAllIngredients() called ===")
         val json = getAllIngredientsJson(nativePtr)
+        Log.d("CookbookEngine", "=== getAllIngredientsJson returned: ${json.take(100)}... ===")
         val type = object : TypeToken<List<Ingredient>>() {}.type
-        return gson.fromJson(json, type) ?: emptyList()
+        val ingredients = gson.fromJson<List<Ingredient>>(json, type) ?: emptyList()
+        
+        Log.d("CookbookEngine", "=== Parsed ${ingredients.size} ingredients ===")
+        for (ingredient in ingredients.take(3)) {
+            Log.d("CookbookEngine", "Ingredient: ${ingredient.name}, isInPantry: ${ingredient.isInPantry}, quantity: ${ingredient.quantity}")
+        }
+        
+        return ingredients
     }
     
     /**

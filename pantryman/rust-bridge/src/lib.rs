@@ -6,7 +6,29 @@ use std::path::Path;
 
 #[cfg(target_os = "android")]
 use android_logger::{Config, FilterBuilder};
+#[cfg(target_os = "android")]
 use log::{debug, info, warn, error};
+
+// Conditional logging macros
+#[cfg(target_os = "android")]
+macro_rules! log_info {
+    ($($arg:tt)*) => { info!($($arg)*) };
+}
+
+#[cfg(target_os = "android")]
+macro_rules! log_error {
+    ($($arg:tt)*) => { error!($($arg)*) };
+}
+
+#[cfg(not(target_os = "android"))]
+macro_rules! log_info {
+    ($($arg:tt)*) => {};
+}
+
+#[cfg(not(target_os = "android"))]
+macro_rules! log_error {
+    ($($arg:tt)*) => {};
+}
 
 // Initialize Android logging
 #[cfg(target_os = "android")]
@@ -48,36 +70,36 @@ pub extern "system" fn Java_com_example_pantryman_CookbookEngine_createDataManag
     let data_dir = match jstring_to_string(&mut env, &data_dir_path) {
         Ok(path) => path,
         Err(e) => {
-            error!("Failed to convert JString to String: {:?}", e);
+            log_error!("Failed to convert JString to String: {:?}", e);
             return 0; // Return null pointer on error
         },
     };
     
-    info!("Attempting to create DataManager with path: {}", data_dir);
+    log_info!("Attempting to create DataManager with path: {}", data_dir);
     
     // Let's also check if the directory exists and what's in it
-    let path = Path::new(&data_dir);
-    if !path.exists() {
-        error!("Data directory does not exist: {}", data_dir);
+    let dir_path = Path::new(&data_dir);
+    if !dir_path.exists() {
+        log_error!("Data directory does not exist: {}", data_dir);
         return 0;
     }
     
-    info!("Data directory exists, checking contents...");
-    if let Ok(entries) = std::fs::read_dir(path) {
+    log_info!("Data directory exists, checking contents...");
+    if let Ok(entries) = std::fs::read_dir(dir_path) {
         for entry in entries {
             if let Ok(entry) = entry {
-                info!("Found file/dir: {:?}", entry.path());
+                log_info!("Found file/dir: {:?}", entry.path());
             }
         }
     }
-    
-    match DataManager::new(path) {
+
+    match DataManager::new(dir_path) {
         Ok(manager) => {
-            info!("DataManager created successfully");
+            log_info!("DataManager created successfully");
             Box::into_raw(Box::new(manager)) as jlong
         },
         Err(e) => {
-            error!("Failed to create DataManager: {:?}", e);
+            log_error!("Failed to create DataManager: {:?}", e);
             0 // Return null pointer on error
         },
     }
@@ -105,22 +127,41 @@ pub extern "system" fn Java_com_example_pantryman_CookbookEngine_getAllIngredien
     _class: JClass,
     manager_ptr: jlong,
 ) -> jstring {
+    log_info!("=== getAllIngredientsJson CALLED ===");
+    
     if manager_ptr == 0 {
+        log_error!("getAllIngredientsJson: manager_ptr is null");
         return string_to_jstring(&mut env, "[]".to_string()).unwrap_or(std::ptr::null_mut());
     }
     
     let manager = unsafe { &*(manager_ptr as *const DataManager) };
+    
+    // First, log pantry loading details
+    log_info!("getAllIngredientsJson: Starting ingredient processing");
+    if let Some(pantry) = manager.get_pantry() {
+        log_info!("getAllIngredientsJson: Pantry has {} items", pantry.items.len());
+        for item in &pantry.items {
+            log_info!("Pantry contains: {} (qty: {:?})", item.ingredient, item.quantity);
+        }
+    } else {
+        log_info!("getAllIngredientsJson: No pantry loaded");
+    }
+    
     let ingredients = manager.get_all_ingredients();
+    log_info!("getAllIngredientsJson: Found {} ingredients", ingredients.len());
     
     let mut ingredient_data = Vec::new();
     for ingredient in ingredients {
         let pantry_item = manager.get_pantry_item(&ingredient.name);
         let is_in_stock = manager.is_in_pantry(&ingredient.name);
         
-        let (quantity, quantity_type) = if let Some(item) = pantry_item {
-            (item.quantity, Some(item.quantity_type.clone()))
+        log_info!("Processing ingredient '{}': pantry_item={:?}, is_in_stock={}", 
+                 ingredient.name, pantry_item.is_some(), is_in_stock);
+        
+        let (quantity, quantity_type, last_updated) = if let Some(item) = pantry_item {
+            (item.quantity, Some(item.quantity_type.clone()), Some(item.last_updated.clone()))
         } else {
-            (None, None)
+            (None, None, None)
         };
         
         let ingredient_json = serde_json::json!({
@@ -129,13 +170,18 @@ pub extern "system" fn Java_com_example_pantryman_CookbookEngine_getAllIngredien
             "category": ingredient.category,
             "kb": ingredient.kb,
             "tags": ingredient.tags,
-            "isInStock": is_in_stock,
+            "isInPantry": is_in_stock,
             "quantity": quantity,
-            "quantityType": quantity_type
+            "quantityType": quantity_type,
+            "lastUpdated": last_updated
         });
+        
+        log_info!("JSON for ingredient '{}': {}", ingredient.name, ingredient_json.to_string());
         
         ingredient_data.push(ingredient_json);
     }
+    
+    log_info!("getAllIngredientsJson: Returning {} ingredient entries", ingredient_data.len());
     
     match serde_json::to_string(&ingredient_data) {
         Ok(json) => string_to_jstring(&mut env, json).unwrap_or(std::ptr::null_mut()),
@@ -177,7 +223,7 @@ pub extern "system" fn Java_com_example_pantryman_CookbookEngine_getIngredientsB
                 "category": ingredient.category,
                 "kb": ingredient.kb,
                 "tags": ingredient.tags,
-                "isInStock": is_in_stock,
+                "isInPantry": is_in_stock,
                 "quantity": quantity,
                 "quantityType": quantity_type
             });
@@ -220,20 +266,40 @@ pub extern "system" fn Java_com_example_pantryman_CookbookEngine_updatePantrySta
     
     let manager = unsafe { &mut *(manager_ptr as *mut DataManager) };
     
+    log_info!("updatePantryStatus called for ingredient: {}, add_to_pantry: {}, quantity: {}, quantity_type: '{}'", 
+             ingredient_name_str, add_to_pantry != 0, quantity, quantity_type_str);
+    
     if add_to_pantry != 0 {
         // Add to pantry
         let qty = if quantity > 0 { Some(quantity as f64) } else { None };
         let qty_type = if quantity_type_str.is_empty() { None } else { Some(quantity_type_str) };
         
+        log_info!("Adding ingredient '{}' to pantry with quantity: {:?}, quantity_type: {:?}", 
+                 ingredient_name_str, qty, qty_type);
+        
         match manager.update_pantry_item(&ingredient_name_str, qty, qty_type) {
-            Ok(_) => 1, // true
-            Err(_) => 0, // false
+            Ok(_) => {
+                log_info!("Successfully added '{}' to pantry", ingredient_name_str);
+                1 // true
+            },
+            Err(e) => {
+                log_error!("Failed to add '{}' to pantry: {:?}", ingredient_name_str, e);
+                0 // false
+            }
         }
     } else {
         // Remove from pantry
+        log_info!("Removing ingredient '{}' from pantry", ingredient_name_str);
+        
         match manager.remove_from_pantry(&ingredient_name_str) {
-            Ok(_) => 1, // true
-            Err(_) => 0, // false
+            Ok(_) => {
+                log_info!("Successfully removed '{}' from pantry", ingredient_name_str);
+                1 // true
+            },
+            Err(e) => {
+                log_error!("Failed to remove '{}' from pantry: {:?}", ingredient_name_str, e);
+                0 // false
+            }
         }
     }
 }
@@ -278,17 +344,26 @@ pub extern "system" fn Java_com_example_pantryman_CookbookEngine_createIngredien
     let ingredient = Ingredient {
         name: name_str.clone(),
         slug: name_str.replace(" ", "_").to_lowercase(),
-        category: category_str,
-        kb: kb_str,
+        category: category_str.clone(),
+        kb: kb_str.clone(),
         tags,
         translations: None,
     };
     
     let manager = unsafe { &mut *(manager_ptr as *mut DataManager) };
     
+    log_info!("createIngredient called for: name='{}', category='{}', kb_slug='{:?}', tags='{}'", 
+             name_str, category_str, kb_str, tags_str);
+    
     match manager.create_ingredient(ingredient) {
-        Ok(_) => 1, // true
-        Err(_) => 0, // false
+        Ok(_) => {
+            log_info!("Successfully created ingredient '{}'", name_str);
+            1 // true
+        },
+        Err(e) => {
+            log_error!("Failed to create ingredient '{}': {:?}", name_str, e);
+            0 // false
+        }
     }
 }
 
@@ -338,17 +413,26 @@ pub extern "system" fn Java_com_example_pantryman_CookbookEngine_updateIngredien
     let ingredient = Ingredient {
         name: new_name_str.clone(),
         slug: new_name_str.replace(" ", "_").to_lowercase(),
-        category: category_str,
-        kb: kb_str,
+        category: category_str.clone(),
+        kb: kb_str.clone(),
         tags,
         translations: None,
     };
     
     let manager = unsafe { &mut *(manager_ptr as *mut DataManager) };
     
+    log_info!("updateIngredient called: '{}' -> '{}', category='{}', kb_slug='{:?}', tags='{}'", 
+             original_name_str, new_name_str, category_str, kb_str, tags_str);
+    
     match manager.update_ingredient(&original_name_str, ingredient) {
-        Ok(_) => 1, // true
-        Err(_) => 0, // false
+        Ok(_) => {
+            log_info!("Successfully updated ingredient '{}' -> '{}'", original_name_str, new_name_str);
+            1 // true
+        },
+        Err(e) => {
+            log_error!("Failed to update ingredient '{}': {:?}", original_name_str, e);
+            0 // false
+        }
     }
 }
 
@@ -371,9 +455,17 @@ pub extern "system" fn Java_com_example_pantryman_CookbookEngine_deleteIngredien
     
     let manager = unsafe { &mut *(manager_ptr as *mut DataManager) };
     
+    log_info!("deleteIngredient called for: '{}'", ingredient_name_str);
+    
     match manager.delete_ingredient(&ingredient_name_str) {
-        Ok(_) => 1, // true
-        Err(_) => 0, // false
+        Ok(_) => {
+            log_info!("Successfully deleted ingredient '{}'", ingredient_name_str);
+            1 // true
+        },
+        Err(e) => {
+            log_error!("Failed to delete ingredient '{}': {:?}", ingredient_name_str, e);
+            0 // false
+        }
     }
 }
 

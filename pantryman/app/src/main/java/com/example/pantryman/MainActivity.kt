@@ -120,43 +120,41 @@ class MainActivity : AppCompatActivity() {
     
     private fun setupInitialData(dataDir: java.io.File) {
         try {
-            // For debugging: always force a fresh copy to ensure consistency
-            // TODO: In production, you might want to make this conditional or add a version check
-            Log.d("MainActivity", "Setting up initial data from assets (force refresh)...")
-            
-            // Clear existing data directory
-            if (dataDir.exists()) {
-                dataDir.deleteRecursively()
-            }
-            
-            // Create directory structure
-            val ingredientsDir = java.io.File(dataDir, "ingredients")
-            val recipesDir = java.io.File(dataDir, "recipes")
-            ingredientsDir.mkdirs()
-            recipesDir.mkdirs()
-            
-            // Copy pantry.yaml
-            val pantryFile = java.io.File(dataDir, "pantry.yaml")
-            copyAssetToFile("pantry.yaml", pantryFile)
-            
-            // Copy ingredients
-            val assetIngredients = assets.list("ingredients") ?: emptyArray()
-            for (ingredient in assetIngredients) {
-                val destFile = java.io.File(ingredientsDir, ingredient)
-                copyAssetToFile("ingredients/$ingredient", destFile)
-            }
-            
-            // Copy recipes if any exist
-            val assetRecipes = assets.list("recipes") ?: emptyArray()
-            for (recipe in assetRecipes) {
-                // Skip directories (like img/)
-                if (!recipe.endsWith("/") && !recipe.equals("img")) {
-                    val destFile = java.io.File(recipesDir, recipe)
-                    copyAssetToFile("recipes/$recipe", destFile)
+            // Only setup initial data if directory doesn't exist or is empty
+            if (!dataDir.exists() || dataDir.listFiles()?.isEmpty() == true) {
+                Log.d("MainActivity", "Setting up initial data from assets...")
+                
+                // Create directory structure
+                val ingredientsDir = java.io.File(dataDir, "ingredients")
+                val recipesDir = java.io.File(dataDir, "recipes")
+                ingredientsDir.mkdirs()
+                recipesDir.mkdirs()
+                
+                // Copy pantry.yaml
+                val pantryFile = java.io.File(dataDir, "pantry.yaml")
+                copyAssetToFile("pantry.yaml", pantryFile)
+                
+                // Copy ingredients
+                val assetIngredients = assets.list("ingredients") ?: emptyArray()
+                for (ingredient in assetIngredients) {
+                    val destFile = java.io.File(ingredientsDir, ingredient)
+                    copyAssetToFile("ingredients/$ingredient", destFile)
                 }
+                
+                // Copy recipes if any exist
+                val assetRecipes = assets.list("recipes") ?: emptyArray()
+                for (recipe in assetRecipes) {
+                    // Skip directories (like img/)
+                    if (!recipe.endsWith("/") && !recipe.equals("img")) {
+                        val destFile = java.io.File(recipesDir, recipe)
+                        copyAssetToFile("recipes/$recipe", destFile)
+                    }
+                }
+                
+                Log.d("MainActivity", "Initial data setup complete")
+            } else {
+                Log.d("MainActivity", "Data directory already exists with files, skipping initial setup")
             }
-            
-            Log.d("MainActivity", "Initial data setup complete")
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed to setup initial data", e)
         }
@@ -348,25 +346,38 @@ class MainActivity : AppCompatActivity() {
 
     private fun updatePantryStatus(ingredient: Ingredient, isInPantry: Boolean, quantity: Double? = null, quantityType: String? = null) {
         try {
-            cookbookEngine.updatePantryStatus(ingredient.name, isInPantry, quantity, quantityType)
+            val success = cookbookEngine.updatePantryStatus(ingredient.name, isInPantry, quantity, quantityType)
             
-            // Update local data
-            val updatedIngredients = allIngredients.map { 
-                if (it.name == ingredient.name) {
-                    it.copy(isInPantry = isInPantry)
-                } else {
-                    it
+            if (success) {
+                // Update local data only if the operation succeeded
+                val updatedIngredients = allIngredients.map { 
+                    if (it.name == ingredient.name) {
+                        it.copy(
+                            isInPantry = isInPantry,
+                            quantity = if (isInPantry && quantity != null) quantity.toString() else null,
+                            quantityType = if (isInPantry) quantityType else null,
+                            lastUpdated = java.time.LocalDate.now().toString()
+                        )
+                    } else {
+                        it
+                    }
                 }
+                allIngredients = updatedIngredients
+                
+                // Refresh the current view
+                filterByCategory(if (categorySpinner.selectedItemPosition == 0) null else categories[categorySpinner.selectedItemPosition - 1])
+                
+                val action = if (isInPantry) "added to" else "removed from"
+                Toast.makeText(this, "${ingredient.name} $action pantry", Toast.LENGTH_SHORT).show()
+                
+                Log.d("MainActivity", "Successfully updated pantry status for ${ingredient.name}: $isInPantry")
+                if (quantity != null && quantityType != null) {
+                    Log.d("MainActivity", "Updated quantity: $quantity $quantityType")
+                }
+            } else {
+                Log.e("MainActivity", "Failed to update pantry status for ${ingredient.name} - engine returned false")
+                showError("Failed to update pantry for ${ingredient.name}")
             }
-            allIngredients = updatedIngredients
-            
-            // Refresh the current view
-            filterByCategory(if (categorySpinner.selectedItemPosition == 0) null else categories[categorySpinner.selectedItemPosition - 1])
-            
-            val action = if (isInPantry) "added to" else "removed from"
-            Toast.makeText(this, "${ingredient.name} $action pantry", Toast.LENGTH_SHORT).show()
-            
-            Log.d("MainActivity", "Updated pantry status for ${ingredient.name}: $isInPantry")
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed to update pantry status", e)
             showError("Failed to update pantry: ${e.message}")
@@ -456,10 +467,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun addNewIngredient(name: String, category: String, tags: List<String>) {
         try {
-            cookbookEngine.createIngredient(name, category, null, tags)
-            loadIngredients() // Reload to get the new ingredient
-            Toast.makeText(this, "Ingredient '$name' added successfully", Toast.LENGTH_SHORT).show()
-            Log.d("MainActivity", "Added new ingredient: $name")
+            val success = cookbookEngine.createIngredient(name, category, null, tags)
+            if (success) {
+                loadIngredients() // Reload to get the new ingredient
+                Toast.makeText(this, "Ingredient '$name' added successfully", Toast.LENGTH_SHORT).show()
+                Log.d("MainActivity", "Successfully added new ingredient: $name")
+            } else {
+                Log.e("MainActivity", "Failed to add ingredient '$name' - engine returned false")
+                showError("Failed to add ingredient '$name'")
+            }
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed to add ingredient", e)
             showError("Failed to add ingredient: ${e.message}")
@@ -468,10 +484,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateIngredient(oldName: String, newName: String, category: String, tags: List<String>) {
         try {
-            cookbookEngine.updateIngredient(oldName, newName, category, null, tags)
-            loadIngredients() // Reload to get updated data
-            Toast.makeText(this, "Ingredient updated successfully", Toast.LENGTH_SHORT).show()
-            Log.d("MainActivity", "Updated ingredient: $oldName -> $newName")
+            val success = cookbookEngine.updateIngredient(oldName, newName, category, null, tags)
+            if (success) {
+                loadIngredients() // Reload to get updated data
+                Toast.makeText(this, "Ingredient updated successfully", Toast.LENGTH_SHORT).show()
+                Log.d("MainActivity", "Successfully updated ingredient: $oldName -> $newName")
+            } else {
+                Log.e("MainActivity", "Failed to update ingredient '$oldName' - engine returned false")
+                showError("Failed to update ingredient '$oldName'")
+            }
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed to update ingredient", e)
             showError("Failed to update ingredient: ${e.message}")
