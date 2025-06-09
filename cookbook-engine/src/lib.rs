@@ -792,7 +792,9 @@ impl DataManager {
         if let Some(index) = pantry_item_index {
             // Update the existing pantry item
             pantry.items[index].quantity = quantity;
-            pantry.items[index].quantity_type = quantity_type.unwrap_or_default();
+            if let Some(qt) = quantity_type {
+                pantry.items[index].quantity_type = qt;
+            }
             pantry.items[index].last_updated = today;
         } else {
             // Create a new pantry item
