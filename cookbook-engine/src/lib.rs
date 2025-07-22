@@ -773,9 +773,7 @@ impl DataManager {
         if self.pantry.is_none() {
             return Err(CookbookError::UpdateError(format!("No pantry loaded")));
         }
-        
-        let pantry = self.pantry.as_mut().unwrap();
-        
+        let pantry = self.pantry.as_mut().expect("Pantry should be loaded if not None");
         // Check if the ingredient exists in the ingredients
         if !self.ingredients.contains_key(ingredient_name) {
             return Err(CookbookError::UpdateError(

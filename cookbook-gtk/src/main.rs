@@ -518,62 +518,50 @@ impl SimpleComponent for AppModel {
 
         // Select the correct recipe in the list box when a recipe is selected
         if self.current_tab == Tab::Recipes && self.selected_recipe.is_some() {
-            let recipe_name = self.selected_recipe.as_ref().unwrap();
-
-            // Find the row with the matching recipe title by iterating through the list box
-            let mut found = false;
-            let mut i = 0;
-            while let Some(row) = widgets.recipes_list_box.row_at_index(i) {
-                i += 1; // Move to next index
-                if let Some(child) = row.child() {
-                    if let Some(label) = child.downcast_ref::<gtk::Label>() {
-                        if label.text() == *recipe_name {
-                            // Select the row (this will highlight it in the UI)
-                            widgets.recipes_list_box.select_row(Some(&row));
-                            found = true;
-                            break;
+            if let Some(recipe_name) = self.selected_recipe.as_ref() {
+                // Find the row with the matching recipe title by iterating through the list box
+                let mut found = false;
+                let mut i = 0;
+                while let Some(row) = widgets.recipes_list_box.row_at_index(i) {
+                    i += 1; // Move to next index
+                    if let Some(child) = row.child() {
+                        if let Some(label) = child.downcast_ref::<gtk::Label>() {
+                            if label.text() == *recipe_name {
+                                // Select the row (this will highlight it in the UI)
+                                widgets.recipes_list_box.select_row(Some(&row));
+                                found = true;
+                                break;
+                            }
                         }
                     }
                 }
-            }
-
-            // If the recipe is not in the current filtered list, clear the filter
-            if !found && !self.search_text.is_empty() {
-                // Reset search text next time update runs
-                // This is a bit of a hack, but it prevents recursion issues
-                let sender_clone = sender.clone();
-                glib::spawn_future_local(async move {
-                    sender_clone.input(AppMsg::SearchTextChanged(String::new()));
-                });
+                // If the recipe is not in the current filtered list, clear the filter
+                if !found && !self.search_text.is_empty() {
+                    // Reset search text next time update runs
+                    // This is a bit of a hack, but it prevents recursion issues
+                    let sender_clone = sender.clone();
+                    glib::spawn_future_local(async move {
+                        sender_clone.input(AppMsg::SearchTextChanged(String::new()));
+                    });
+                }
             }
         }
 
         // Update pantry details if an ingredient is selected
         if self.current_tab == Tab::Pantry && self.selected_ingredient.is_some() {
-            let ingredient_name = self.selected_ingredient.as_ref().unwrap();
+            if let Some(ingredient_name) = self.selected_ingredient.as_ref() {
+                // Clear previous content
+                utils::clear_box(&widgets.pantry_details);
 
-            // Clear previous content
-            utils::clear_box(&widgets.pantry_details);
-
-            if let Some(ref dm) = self.data_manager {
-                let details_view = pantry::build_ingredient_detail_view(
-                    dm,
-                    ingredient_name,
-                    &sender,
-                    AppMsg::SwitchTab,
-                    AppMsg::SelectKnowledgeBaseEntry,
-                    AppMsg::SelectRecipe,
-                    AppMsg::EditIngredient,
-                );
-                widgets.pantry_details.append(&details_view);
-            } else {
-                // Data manager not available
-                let error_label = gtk::Label::new(Some(
-                    "Unable to load ingredient: data manager not available",
-                ));
-                error_label.set_halign(gtk::Align::Center);
-                error_label.set_valign(gtk::Align::Center);
-                widgets.pantry_details.append(&error_label);
+                if let Some(ref dm) = self.data_manager {
+                    let details_view = pantry::build_ingredient_detail_view(
+                        dm,
+                        ingredient_name,
+                        &widgets,
+                        &sender,
+                    );
+                    widgets.pantry_details.append(&details_view);
+                }
             }
         } else if self.current_tab == Tab::Pantry && self.selected_ingredient.is_none() {
             // No ingredient selected

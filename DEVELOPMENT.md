@@ -1,10 +1,16 @@
 # Cookbook Project Development Documentation
 
-**Last Updated**: June 7, 2025
+**Last Updated**: July 22, 2025
 
 ## Overview
 
 Cookbook is a cross-platform recipe and pantry management application. This document consolidates all the development work and decisions made on the Pantryman Android component.
+
+## Quickstart for New Contributors
+
+Before you begin, please see the new [README.md](README.md) in the project root for up-to-date bootstrapping instructions for all major platforms (Windows, WSL, Oracle Linux, Ubuntu, Fedora, Arch, NixOS, macOS). It lists all required dependencies and installation commands for both the GTK desktop frontend and the Pantryman Android app.
+
+Once your environment is set up, use the provided `dev.sh` script for common development tasks (see below).
 
 ## Project Structure
 
@@ -82,11 +88,11 @@ Use the `./dev.sh` script for common development tasks:
 ```bash
 ./dev.sh gtk                 # Run GTK application
 ./dev.sh android-build       # Build Android app
-./dev.sh android-install     # Build and install to device
-./dev.sh android-run         # Build, install, and run
-./dev.sh android-logs        # Monitor app logs
-./dev.sh android-data        # Check current data directory
-./dev.sh check               # Run cargo check
+./dev.sh android-install     # Build and install Pantryman to device
+./dev.sh android-run         # Build, install, and run Pantryman
+./dev.sh android-logs        # Monitor Android logs
+./dev.sh android-data        # Show current Android app data directory contents
+./dev.sh check               # Run cargo check on all Rust components
 ./dev.sh clean               # Clean build artifacts
 ./dev.sh test                # Run all tests
 ```
@@ -109,3 +115,7 @@ All tests confirm the engine works correctly. Issues were in the Android app lay
 ✅ **READY**: App ready for regular use with third-party sync solutions  
 
 The Pantryman app now provides a solid foundation for mobile pantry management with reliable data persistence and sync capabilities.
+
+---
+
+For troubleshooting, platform-specific notes, and workflow tips, always check the [README.md](README.md) first.

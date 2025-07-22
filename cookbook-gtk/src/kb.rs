@@ -77,9 +77,21 @@ pub fn update_kb_list<C>(
 /// Supports headings, bold, italic, unordered lists, and links.
 fn markdown_to_pango(md: &str) -> String {
     let mut out = String::new();
-    let bold_re = Regex::new(r"\*\*(.+?)\*\*").unwrap();
-    let italic_re = Regex::new(r"\*(.+?)\*").unwrap();
-    let link_re = Regex::new(r"\[(.+?)\]\((.+?)\)").unwrap();
+    let bold_re = Regex::new(r"\*\*(.+?)\*\*");
+    let bold_re = match bold_re {
+        Ok(re) => re,
+        Err(_) => return String::from("[Markdown bold regex error]")
+    };
+    let italic_re = Regex::new(r"\*(.+?)\*");
+    let italic_re = match italic_re {
+        Ok(re) => re,
+        Err(_) => return String::from("[Markdown italic regex error]")
+    };
+    let link_re = Regex::new(r"\[(.+?)\]\((.+?)\)");
+    let link_re = match link_re {
+        Ok(re) => re,
+        Err(_) => return String::from("[Markdown link regex error]")
+    };
     let mut in_table = false;
     for line in md.lines() {
         let trimmed = line.trim();
