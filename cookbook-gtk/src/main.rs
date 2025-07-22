@@ -1,4 +1,3 @@
-// filepath: /home/mpr/code/cookbook/cookbook-gtk/src/main.rs
 // main.rs is the entry point for the GTK application
 // It initializes the GTK application, sets up the main window, and handles user interactions
 // The application is built using the relm4 library, which provides a way to create GTK applications in Rust
@@ -547,34 +546,33 @@ impl SimpleComponent for AppModel {
             }
         }
 
-        // Update pantry details if an ingredient is selected
-        if self.current_tab == Tab::Pantry && self.selected_ingredient.is_some() {
+        // ...existing code...
+        // Update pantry details for Pantry tab
+        if self.current_tab == Tab::Pantry {
             if let Some(ingredient_name) = self.selected_ingredient.as_ref() {
                 // Clear previous content
                 utils::clear_box(&widgets.pantry_details);
-
                 if let Some(ref dm) = self.data_manager {
                     let details_view = pantry::build_ingredient_detail_view(
                         dm,
                         ingredient_name,
-                        &widgets,
                         &sender,
+                        |tab| AppMsg::SwitchTab(tab),
+                        |slug| AppMsg::SelectKnowledgeBaseEntry(slug),
+                        |recipe| AppMsg::SelectRecipe(recipe),
+                        |ingredient| AppMsg::EditIngredient(ingredient),
                     );
                     widgets.pantry_details.append(&details_view);
                 }
+            } else {
+                // No ingredient selected
+                utils::clear_box(&widgets.pantry_details);
+                let select_label = gtk::Label::new(Some("Select an ingredient to view details"));
+                select_label.set_halign(gtk::Align::Center);
+                select_label.set_valign(gtk::Align::Center);
+                widgets.pantry_details.append(&select_label);
             }
-        } else if self.current_tab == Tab::Pantry && self.selected_ingredient.is_none() {
-            // No ingredient selected
-            // Clear previous content
-            utils::clear_box(&widgets.pantry_details);
-
-            let select_label = gtk::Label::new(Some("Select an ingredient to view details"));
-            select_label.set_halign(gtk::Align::Center);
-            select_label.set_valign(gtk::Align::Center);
-            widgets.pantry_details.append(&select_label);
         }
-
-        // Update recipe details if a recipe is selected
 
         // Update recipe details if a recipe is selected
         if self.current_tab == Tab::Recipes {

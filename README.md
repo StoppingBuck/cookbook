@@ -103,13 +103,48 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source $HOME/.cargo/env
 ```
 
+
 ### Arch Linux
 
-```bash
-sudo pacman -Syu
-sudo pacman -S git python rust gcc pkgconf gtk4 gdk-pixbuf2 jdk-openjdk gradle
-```
-- For Android: Install Android Studio from AUR or official site.
+1. **Update your system:**
+   ```bash
+   sudo pacman -Syu
+   ```
+2. **Install core dependencies:**
+   ```bash
+   sudo pacman -S git python rust gcc pkgconf make
+   ```
+3. **Install GTK4 development libraries:**
+   ```bash
+   sudo pacman -S gtk4 gdk-pixbuf2 glib2 xz
+   ```
+4. **Install Java (JDK 21+):**
+   ```bash
+   sudo pacman -S jdk-openjdk
+   ```
+5. **Install Gradle:**
+   ```bash
+   sudo pacman -S gradle
+   ```
+6. **Android SDK & NDK:**
+   - **Install Android Studio:**
+     ```bash
+     # Download the latest Android Studio .tar.gz for Linux from:
+     # https://developer.android.com/studio
+     # Example (update version as needed):
+     wget https://redirector.gvt1.com/edgedl/android/studio/ide-zips/2025.1.1.14/android-studio-2025.1.1.14-linux.tar.gz
+     tar -xzvf android-studio-*-linux.tar.gz
+     mv android-studio ~/android-studio
+     # Launch Android Studio (requires a working X11 setup)
+     ~/android-studio/bin/studio.sh &
+     ```
+     - Follow the setup wizard to install the SDK and NDK.
+     - If you are in WSL, make sure you have WSLg or another X Server running in order for Pantryman to render in Windows.
+
+- For Rust: After install, run:
+  ```bash
+  source $HOME/.cargo/env
+  ```
 
 ### NixOS
 
