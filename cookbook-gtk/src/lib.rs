@@ -70,6 +70,7 @@ impl SimpleComponent for AppModel {
                     |_| crate::types::AppMsg::SelectKnowledgeBaseEntry(String::new()),
                     |_| crate::types::AppMsg::SelectRecipe(String::new()),
                     |_| crate::types::AppMsg::EditIngredient(String::new()),
+                    |_| crate::types::AppMsg::DeleteIngredient(String::new()),
                 );
                 widgets.pantry_details.append(&detail_view);
                 println!("DEBUG: update_view - Detail view appended for slug={:?}", selected_slug);

@@ -67,20 +67,10 @@ pub fn update_recipes_list<C>(
                 }
 
                 if all_in_stock {
-                    let icon = gtk::Image::from_icon_name("emblem-ok-symbolic");
-                    icon.set_halign(gtk::Align::End);
-                    if any_unknown {
-                        // Wrap the icon in a box with parentheses labels
-                        let icon_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-                        let left_paren = gtk::Label::new(Some("("));
-                        let right_paren = gtk::Label::new(Some(")"));
-                        icon_box.append(&left_paren);
-                        icon_box.append(&icon);
-                        icon_box.append(&right_paren);
-                        box_layout.append(&icon_box);
-                    } else {
-                        box_layout.append(&icon);
-                    }
+                    let in_stock_label = gtk::Label::new(Some("(in stock)"));
+                    in_stock_label.add_css_class("in-stock-label");
+                    in_stock_label.set_halign(gtk::Align::End);
+                    box_layout.append(&in_stock_label);
                 }
 
                 row.set_child(Some(&box_layout));
@@ -303,11 +293,12 @@ where
             let ingredient_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
             ingredient_box.set_margin_bottom(LIST_ROW_MARGIN);
 
-            // Add checkmark if ingredient is in pantry
+            // Add '(in stock)' text if ingredient is in pantry
             let is_in_pantry = pantry_items.contains(&ingredient.ingredient);
             if is_in_pantry {
-                let check_icon = gtk::Image::from_icon_name("emblem-ok-symbolic");
-                ingredient_box.append(&check_icon);
+                let in_stock_label = gtk::Label::new(Some("(in stock)"));
+                in_stock_label.add_css_class("in-stock-label");
+                ingredient_box.append(&in_stock_label);
             } else {
                 let space_label = gtk::Label::new(Some(" "));
                 space_label.set_width_chars(2);

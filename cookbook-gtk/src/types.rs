@@ -32,6 +32,7 @@ pub enum AppMsg {
     UpdateRecipe(String, cookbook_engine::Recipe), // (original_title, new_recipe)
     ClearError,
     AddIngredient, // Triggers the add ingredient dialog
+    DeleteIngredient(String), // Deletes an ingredient by slug
     ReloadPantry, // Explicitly reload pantry data and UI
     AddRecipe, // Triggers the add recipe dialog
     DeleteRecipe(String), // Deletes a recipe by title

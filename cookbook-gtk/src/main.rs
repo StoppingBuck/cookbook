@@ -440,6 +440,25 @@ impl SimpleComponent for AppModel {
                 }
             }
             // Message: Explicitly reload recipes data and UI
+            AppMsg::DeleteIngredient(ingredient_slug) => {
+                if let Some(ref data_manager) = self.data_manager {
+                    let data_dir = data_manager.get_data_dir();
+                    let ingredients_dir = data_dir.join("ingredients");
+                    let file_name = format!("{}.yaml", ingredient_slug);
+                    let ingredient_path = ingredients_dir.join(&file_name);
+                    let result = std::fs::remove_file(&ingredient_path);
+                    match result {
+                        Ok(_) => {
+                            self.selected_ingredient = None;
+                            sender.input(AppMsg::ReloadPantry);
+                        }
+                        Err(err) => {
+                            let error_message = format!("Failed to delete ingredient: {}", err);
+                            self.error_message = Some(error_message);
+                        }
+                    }
+                }
+            }
             AppMsg::ReloadRecipes => {
                 if let Some(ref data_manager) = self.data_manager {
                     match cookbook_engine::DataManager::new(data_manager.get_data_dir()) {
@@ -606,7 +625,6 @@ impl SimpleComponent for AppModel {
                     while let Some(child) = widgets.pantry_details.first_child() {
                         widgets.pantry_details.remove(&child);
                     }
-                    let slug_for_closures = selected_slug.clone();
                     let detail = pantry::build_ingredient_detail_view(
                         data_manager,
                         selected_slug,
@@ -614,7 +632,14 @@ impl SimpleComponent for AppModel {
                         move |_| AppMsg::SwitchTab(Tab::Pantry),
                         move |_| AppMsg::SelectKnowledgeBaseEntry(String::new()),
                         move |_| AppMsg::SelectRecipe(String::new()),
-                        move |_| AppMsg::EditIngredient(slug_for_closures.clone()),
+                        {
+                            let slug = selected_slug.clone();
+                            move |_| AppMsg::EditIngredient(slug.clone())
+                        },
+                        {
+                            let slug = selected_slug.clone();
+                            move |_| AppMsg::DeleteIngredient(slug.clone())
+                        },
                     );
                     widgets.pantry_details.append(&detail);
                 }
