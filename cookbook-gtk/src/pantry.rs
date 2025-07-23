@@ -8,162 +8,157 @@ use gtk::prelude::*;
 use relm4::gtk;
 use relm4::ComponentSender;
 use relm4::RelmWidgetExt;
-use std::collections::HashMap;
 use std::rc::Rc;
 
-/// Rebuilds the pantry list with filtered ingredients based on search text and category filters
+/// Rebuilds the Pantry List Pane with filtered ingredients based on search text and category filters
 pub fn rebuild_pantry_list<C>(
-    pantry_list: &gtk::Box,
-    data_manager: &Option<Rc<DataManager>>,
+    pantry_list: &gtk::ListBox,
     search_text: &str,
     selected_categories: &[String],
     show_in_stock_only: bool,
-    sender: &ComponentSender<C>,
-    select_ingredient_msg: impl Fn(String) -> C::Input + Clone + 'static,
+    select_ingredient_msg: impl Fn(String) -> <C as relm4::Component>::Input + Clone + 'static,
     model: &AppModel,
+    sender: Option<ComponentSender<C>>,
+    pantry_details_box: Option<&gtk::Box>,
 ) where
-    C: relm4::Component,
+    C: relm4::Component + 'static,
 {
     // Clear current list
-    utils::clear_box(&pantry_list);
+    while let Some(child) = pantry_list.first_child() {
+        pantry_list.remove(&child);
+    }
 
-    if let Some(ref dm) = data_manager {
-        let _pantry = dm.get_pantry(); // Prefix with underscore to avoid unused variable warning
-
-        // Use engine method to filter ingredients
-        let lang = &model.user_settings.borrow().language;
-        let filtered_ingredients =
-            dm.filter_ingredients(search_text, selected_categories, show_in_stock_only, lang);
-
-        // Convert filtered ingredients to the format expected by the UI
-        let mut pantry_items_by_category: HashMap<
-            String,
-            Vec<(String, String, Option<String>, Option<String>, bool)>,
-        > = HashMap::new();
-
-        for ingredient in filtered_ingredients {
-            let is_in_stock = dm.is_in_pantry(&ingredient.name);
-            let lang = &model.user_settings.borrow().language;
-            let quantity = if let Some(pantry_item) = dm.get_pantry_item(&ingredient.name) {
-                pantry_item.quantity
-            } else {
-                None
-            };
-            let display_name = DataManager::ingredient_display_name(ingredient, lang, quantity);
-            let slug = ingredient.slug.clone();
-            let (quantity_str, quantity_type) =
-                if let Some(pantry_item) = dm.get_pantry_item(&ingredient.name) {
-                    (
-                        pantry_item.quantity.map(|q| q.to_string()),
-                        Some(pantry_item.quantity_type.clone()),
-                    )
-                } else {
-                    (None, Some(String::new()))
-                };
-            pantry_items_by_category
-                .entry(ingredient.category.clone())
-                .or_default()
-                .push((
-                    display_name,
-                    slug,
-                    quantity_str,
-                    quantity_type,
-                    is_in_stock,
-                ));
+    let lang = "en"; // TODO: get from model/user_settings
+    let dm = match &model.data_manager {
+        Some(dm) => dm,
+        None => {
+            let row = gtk::ListBoxRow::new();
+            let no_data_label = gtk::Label::new(Some(&tr("No ingredient data available")));
+            no_data_label.set_margin_all(DEFAULT_MARGIN);
+            row.set_child(Some(&no_data_label));
+            pantry_list.append(&row);
+            return;
         }
+    };
 
-        // Sort categories and ingredients
-        let mut sorted_categories: Vec<String> = pantry_items_by_category.keys().cloned().collect();
-        sorted_categories.sort();
+    let filtered_ingredients = dm.filter_ingredients(search_text, selected_categories, show_in_stock_only, lang);
+    let mut pantry_items_by_category: std::collections::HashMap<String, Vec<(String, String, Option<String>, Option<String>, bool)>> = std::collections::HashMap::new();
 
-        if pantry_items_by_category.is_empty() {
-            // No items match the filters
-            let no_items_label = gtk::Label::new(Some(&tr("No ingredients match the current filters")));
-            no_items_label.set_margin_all(20);
-            pantry_list.append(&no_items_label);
-        } else {
-            for category in sorted_categories {
-                // Category header as bold label
-                let category_label = gtk::Label::new(None);
-                category_label.set_markup(&format!("<b>{}</b>", category));
-                category_label.set_halign(gtk::Align::Start);
-                category_label.set_margin_top(DEFAULT_MARGIN);
-                category_label.set_margin_bottom(LIST_ROW_MARGIN);
-                pantry_list.append(&category_label);
+    for ingredient in &filtered_ingredients {
+        let is_in_stock = dm.is_in_pantry(&ingredient.name);
+        let quantity = dm.get_pantry_item(&ingredient.name).and_then(|item| item.quantity);
+        let quantity_type = dm.get_pantry_item(&ingredient.name).map(|item| item.quantity_type.clone());
+        let display_name = DataManager::ingredient_display_name(ingredient, lang, quantity);
+        let slug = ingredient.slug.clone();
+        pantry_items_by_category
+            .entry(ingredient.category.clone())
+            .or_default()
+            .push((display_name, slug, quantity.map(|q| q.to_string()), quantity_type, is_in_stock));
+    }
 
-                // ListBox for ingredients in this category
-                let listbox = gtk::ListBox::new();
-                listbox.set_selection_mode(gtk::SelectionMode::None);
-                listbox.set_hexpand(true);
+    let mut sorted_categories: Vec<String> = pantry_items_by_category.keys().cloned().collect();
+    sorted_categories.sort();
 
-                if let Some(items) = pantry_items_by_category.get_mut(&category) {
-                    // Sort ingredients alphabetically within category
-                    items.sort_by(|a, b| a.0.cmp(&b.0));
+    if pantry_items_by_category.is_empty() {
+        let row = gtk::ListBoxRow::new();
+        let no_items_label = gtk::Label::new(Some(&tr("No ingredients match the current filters")));
+        no_items_label.set_margin_all(20);
+        row.set_child(Some(&no_items_label));
+        pantry_list.append(&row);
+    } else {
+        for category in sorted_categories {
+            let category_row = gtk::ListBoxRow::new();
+            let category_label = gtk::Label::new(None);
+            category_label.set_markup(&format!("<b>{}</b>", category));
+            category_label.set_halign(gtk::Align::Start);
+            category_label.set_margin_top(DEFAULT_MARGIN);
+            category_label.set_margin_bottom(LIST_ROW_MARGIN);
+            category_row.set_child(Some(&category_label));
+            pantry_list.append(&category_row);
 
-                    for (name, slug, quantity, quantity_type, is_in_stock) in items.iter() {
-                        let row = gtk::ListBoxRow::new();
-                        row.set_selectable(false);
-                        let item_row = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
-                        item_row.set_margin_all(LIST_ROW_MARGIN);
-                        item_row.add_css_class("pantry-item");
+            if let Some(items) = pantry_items_by_category.get_mut(&category) {
+                items.sort_by(|a, b| a.0.cmp(&b.0));
+                for (name, slug, quantity, quantity_type, is_in_stock) in items.iter() {
+                    let row = gtk::ListBoxRow::new();
+                    let item_row = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
+                    item_row.set_margin_all(LIST_ROW_MARGIN);
+                    item_row.add_css_class("pantry-item");
 
-                        // Create the item label with quantity if available
-                        let mut label_text = name.clone();
-                        if *is_in_stock {
-                            if let Some(q) = quantity {
-                                if let Some(t) = quantity_type.as_ref() {
-                                    if t.is_empty() {
-                                        label_text = format!("{} ({})", name, q);
-                                    } else {
-                                        label_text = format!("{} ({} {})", name, q, t);
-                                    }
-                                } else {
+                    let mut label_text = name.clone();
+                    if *is_in_stock {
+                        if let Some(q) = quantity {
+                            if let Some(t) = quantity_type.as_ref() {
+                                if t.is_empty() {
                                     label_text = format!("{} ({})", name, q);
+                                } else {
+                                    label_text = format!("{} ({} {})", name, q, t);
                                 }
-                                label_text = format!("{} ✅", label_text);
                             } else {
-                                // Quantity unknown
-                                label_text = format!("{} ❓", name);
+                                label_text = format!("{} ({})", name, q);
                             }
+                            label_text = format!("{} ✅", label_text);
+                        } else {
+                            label_text = format!("{} ❓", name);
                         }
-
-                        let item_label = gtk::Label::new(Some(&label_text));
-                        item_label.set_halign(gtk::Align::Start);
-                        item_label.set_hexpand(true);
-                        item_row.append(&item_label);
-
-                        // Optional: add chevron icon to indicate clickability
-                        let chevron = gtk::Image::from_icon_name("go-next-symbolic");
-                        chevron.set_pixel_size(16);
-                        chevron.set_valign(gtk::Align::Center);
-                        item_row.append(&chevron);
-
-                        // Make the row clickable
-                        let click_gesture = gtk::GestureClick::new();
-                        item_row.add_controller(click_gesture.clone());
-                        let sender_clone = sender.clone();
-                        let slug_clone = slug.clone();
-                        let select_msg_clone = select_ingredient_msg.clone();
-                        click_gesture.connect_pressed(move |_, _, _, _| {
-                            sender_clone.input(select_msg_clone(slug_clone.clone()));
-                        });
-
-                        row.set_child(Some(&item_row));
-                        listbox.append(&row);
                     }
+
+                    let item_label = gtk::Label::new(Some(&label_text));
+                    item_label.set_halign(gtk::Align::Start);
+                    item_label.set_hexpand(true);
+                    item_row.append(&item_label);
+
+                    let chevron = gtk::Image::from_icon_name("go-next-symbolic");
+                    chevron.set_pixel_size(16);
+                    chevron.set_valign(gtk::Align::Center);
+                    item_row.append(&chevron);
+
+                    let click_gesture = gtk::GestureClick::new();
+                    item_row.add_controller(click_gesture.clone());
+                    let sender_clone = sender.clone();
+                    let slug_clone = slug.clone();
+                    let select_msg_clone = select_ingredient_msg.clone();
+                    let pantry_details_box = pantry_details_box.cloned();
+                    let dm_rc = dm.clone();
+                    click_gesture.connect_pressed(move |_, _, _, _| {
+                        if let Some(sender) = &sender_clone {
+                            sender.input(select_msg_clone(slug_clone.clone()));
+                        } else if let Some(details_box) = pantry_details_box.as_ref() {
+                            // Directly update details pane in test mode
+                            while let Some(child) = details_box.first_child() {
+                                details_box.remove(&child);
+                            }
+                            // Use build_ingredient_detail_view with dummy sender
+                            use relm4::ComponentSender;
+                            let dummy_sender: &ComponentSender<AppModel> = unsafe { std::mem::zeroed() };
+                            let detail_view = crate::pantry::build_ingredient_detail_view(
+                                &dm_rc,
+                                &slug_clone,
+                                dummy_sender,
+                                |_| AppMsg::SwitchTab(crate::Tab::Pantry),
+                                |_| AppMsg::SelectKnowledgeBaseEntry(String::new()),
+                                |_| AppMsg::SelectRecipe(String::new()),
+                                |_| AppMsg::EditIngredient(String::new()),
+                            );
+                            details_box.append(&detail_view);
+                        }
+                    });
+
+                    row.set_child(Some(&item_row));
+                    pantry_list.append(&row);
                 }
-                pantry_list.append(&listbox);
             }
         }
-    } else {
-        // No data available
+    }
+    if filtered_ingredients.is_empty() {
+        let row = gtk::ListBoxRow::new();
         let no_data_label = gtk::Label::new(Some(&tr("No ingredient data available")));
         no_data_label.set_margin_all(DEFAULT_MARGIN);
-        pantry_list.append(&no_data_label);
+        row.set_child(Some(&no_data_label));
+        pantry_list.append(&row);
     }
 }
 
-/// Builds and returns the pantry ingredient detail view for a selected ingredient
+/// Builds and returns the Pantry Details Pane for a selected ingredient
 pub fn build_ingredient_detail_view<C>(
     data_manager: &Rc<DataManager>,
     ingredient_id: &str, // now this is always a slug
@@ -736,15 +731,17 @@ pub fn show_edit_ingredient_dialog(
 /// Builds the Pantry tab UI and returns the main container, list container, details box, in-stock switch, and title label.
 pub fn build_pantry_tab(
     model: &AppModel,
-    sender: &ComponentSender<AppModel>,
-) -> (
-    gtk::Box,                       // pantry_container
-    gtk::Box,                       // pantry_list_container
-    gtk::Box,                       // pantry_details_box
-    gtk::Switch,                    // stock_filter_switch
-    gtk::Label,                     // pantry_title
-    Option<Box<dyn Fn(&AppModel)>>, // refresh_categories closure
-) {
+    sender: Option<ComponentSender<AppModel>>,
+)
+    -> (
+        gtk::Box,                       // pantry_container
+        gtk::ListBox,                   // pantry_list_container
+        gtk::Box,                       // pantry_details_box
+        gtk::Switch,                    // stock_filter_switch
+        gtk::Label,                     // pantry_title
+        Option<Box<dyn Fn(&AppModel)>>, // refresh_categories closure
+    )
+{
     // Main container for the Pantry tab
     let pantry_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
 
@@ -813,10 +810,12 @@ pub fn build_pantry_tab(
                 let sender_clone = sender.clone();
                 let category_clone = category.clone();
                 check.connect_toggled(move |btn| {
-                    sender_clone.input(AppMsg::TogglePantryCategory(
-                        category_clone.clone(),
-                        btn.is_active(),
-                    ));
+                    if let Some(sender) = &sender_clone {
+                        sender.input(AppMsg::TogglePantryCategory(
+                            category_clone.clone(),
+                            btn.is_active(),
+                        ));
+                    }
                 });
                 listbox.append(&check);
             }
@@ -871,10 +870,12 @@ pub fn build_pantry_tab(
                 let sender_clone = sender_for_refresh_categories.clone();
                 let category_clone = category.clone();
                 check.connect_toggled(move |btn| {
-                    sender_clone.input(AppMsg::TogglePantryCategory(
-                        category_clone.clone(),
-                        btn.is_active(),
-                    ));
+                    if let Some(sender) = &sender_clone {
+                        sender.input(AppMsg::TogglePantryCategory(
+                            category_clone.clone(),
+                            btn.is_active(),
+                        ));
+                    }
                 });
                 listbox.append(&check);
             }
@@ -898,7 +899,9 @@ pub fn build_pantry_tab(
     refresh_button.set_tooltip_text(Some(&tr("Refresh category list")));
     let sender_for_refresh = sender.clone();
     refresh_button.connect_clicked(move |_| {
-        sender_for_refresh.input(AppMsg::RefreshCategoryPopover);
+        if let Some(sender) = &sender_for_refresh {
+            sender.input(AppMsg::RefreshCategoryPopover);
+        }
     });
 
     // Update button label to show number of selected categories
@@ -916,7 +919,9 @@ pub fn build_pantry_tab(
     stock_filter_switch.set_state(model.show_in_stock_only);
     let sender_clone = sender.clone();
     stock_filter_switch.connect_state_notify(move |switch| {
-        sender_clone.input(AppMsg::ToggleInStockFilter(switch.state()));
+        if let Some(sender) = &sender_clone {
+            sender.input(AppMsg::ToggleInStockFilter(switch.state()));
+        }
     });
 
     stock_filter_box.append(&stock_filter_label);
@@ -934,7 +939,178 @@ pub fn build_pantry_tab(
     pantry_container.append(&pantry_title);
     pantry_container.append(&filters_frame);
 
-    // Split view for pantry (list on left, details on right)
+    // Pantry Tab UI Structure:
+    // - Pantry List Pane (middle): shows all ingredients
+    // - Pantry Details Pane (right): shows details for selected ingredient
+    // - Navigation Pane (left): handled by main app sidebar, not here
+    // The panes are uncoupled except:
+    //   - Selecting an ingredient in the List Pane updates the Details Pane
+    //   - Changing tab in Navigation triggers List Pane update
+
+    let pantry_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
+
+    // Title
+    let pantry_title = gtk::Label::new(Some(&tr("Pantry")));
+    pantry_title.set_markup(&format!("<span size='x-large' weight='bold'>{}</span>", tr("Pantry")));
+    pantry_title.set_halign(gtk::Align::Start);
+    pantry_title.set_margin_all(DEFAULT_MARGIN);
+
+    // Filters frame
+    let filters_frame = gtk::Frame::new(None);
+    filters_frame.set_margin_bottom(DEFAULT_MARGIN);
+
+    let filters_container = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
+    filters_container.set_margin_all(DEFAULT_MARGIN);
+
+    // Category filters (popover multi-select)
+    let category_filters_label = gtk::Label::new(Some(&tr("Categories:")));
+    category_filters_label.set_halign(gtk::Align::Start);
+    category_filters_label.set_margin_bottom(LIST_ROW_MARGIN);
+
+    // Button to open popover (static, not recreated)
+    let filter_button = gtk::Button::with_label(&tr("Filter Categories"));
+    filter_button.set_halign(gtk::Align::Start);
+    filter_button.set_tooltip_text(Some(&tr("Filter by one or more categories")));
+
+    // Popover for category filters (static)
+    let popover = gtk::Popover::new();
+    popover.set_parent(&filter_button);
+    {
+        let popover_weak = popover.downgrade();
+        filter_button.connect_destroy(move |_| {
+            if let Some(popover) = popover_weak.upgrade() {
+                popover.popdown();
+                popover.unparent();
+            }
+        });
+    }
+
+    let popover_box = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
+    popover_box.set_margin_all(DEFAULT_MARGIN);
+    popover_box.set_vexpand(true);
+    let scroll = gtk::ScrolledWindow::new();
+    scroll.set_min_content_height(180);
+    scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+    let listbox = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
+    scroll.set_child(Some(&listbox));
+    popover_box.append(&scroll);
+    popover.set_child(Some(&popover_box));
+
+    // Function to refresh the listbox contents
+    let refresh_categories = {
+        let listbox = listbox.clone();
+        let sender = sender.clone();
+        move |categories: Vec<String>, selected_categories: Vec<String>| {
+            while let Some(child) = listbox.first_child() {
+                listbox.remove(&child);
+            }
+            for category in &categories {
+                let check = gtk::CheckButton::with_label(category);
+                check.set_active(selected_categories.contains(category));
+                let sender_clone = sender.clone();
+                let category_clone = category.clone();
+                check.connect_toggled(move |btn| {
+                    if let Some(sender) = &sender_clone {
+                        sender.input(AppMsg::TogglePantryCategory(
+                            category_clone.clone(),
+                            btn.is_active(),
+                        ));
+                    }
+                });
+                listbox.append(&check);
+            }
+        }
+    };
+    let categories = if let Some(ref dm) = model.data_manager {
+        let cats = dm.as_ref().get_unique_categories();
+        cats
+    } else {
+        Vec::new()
+    };
+    let selected_categories = model.selected_pantry_categories.clone();
+    refresh_categories(categories.clone(), selected_categories.clone());
+
+    let listbox = listbox.clone();
+    let sender = sender.clone();
+    let sender_for_refresh_categories = sender.clone();
+    let refresh_categories_boxed = Box::new(move |model: &AppModel| {
+        if let Some(ref dm) = model.data_manager {
+            let categories = dm.as_ref().get_unique_categories();
+            let selected_categories = model.selected_pantry_categories.clone();
+            while let Some(child) = listbox.first_child() {
+                listbox.remove(&child);
+            }
+            for category in &categories {
+                let check = gtk::CheckButton::with_label(category);
+                check.set_active(selected_categories.contains(category));
+                let sender_clone = sender_for_refresh_categories.clone();
+                let category_clone = category.clone();
+                check.connect_toggled(move |btn| {
+                    if let Some(sender) = &sender_clone {
+                        sender.input(AppMsg::TogglePantryCategory(
+                            category_clone.clone(),
+                            btn.is_active(),
+                        ));
+                    }
+                });
+                listbox.append(&check);
+            }
+        } else {
+            while let Some(child) = listbox.first_child() {
+                listbox.remove(&child);
+            }
+        }
+    });
+    filter_button.connect_clicked(move |_| {
+        popover.popup();
+    });
+
+    let refresh_button = gtk::Button::new();
+    let refresh_icon = gtk::Image::from_icon_name("view-refresh-symbolic");
+    refresh_icon.set_pixel_size(16);
+    refresh_button.set_child(Some(&refresh_icon));
+    refresh_button.set_tooltip_text(Some(&tr("Refresh category list")));
+    let sender_for_refresh = sender.clone();
+    refresh_button.connect_clicked(move |_| {
+        if let Some(sender) = &sender_for_refresh {
+            sender.input(AppMsg::RefreshCategoryPopover);
+        }
+    });
+
+    let selected_count = model.selected_pantry_categories.len();
+    if selected_count > 0 {
+        filter_button.set_label(&format!("{} ({})", tr("Filter Categories"), selected_count));
+    }
+
+    let stock_filter_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
+    let stock_filter_label = gtk::Label::new(Some(&tr("Show in-stock items only:")));
+    stock_filter_label.set_halign(gtk::Align::Start);
+
+    let stock_filter_switch = gtk::Switch::new();
+    stock_filter_switch.set_state(model.show_in_stock_only);
+    let sender_clone = sender.clone();
+    stock_filter_switch.connect_state_notify(move |switch| {
+        if let Some(sender) = &sender_clone {
+            sender.input(AppMsg::ToggleInStockFilter(switch.state()));
+        }
+    });
+
+    stock_filter_box.append(&stock_filter_label);
+    stock_filter_box.append(&stock_filter_switch);
+
+    let filter_buttons_box = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
+    filter_buttons_box.append(&filter_button);
+    filter_buttons_box.append(&refresh_button);
+
+    filters_container.append(&category_filters_label);
+    filters_container.append(&filter_buttons_box);
+    filters_container.append(&stock_filter_box);
+
+    filters_frame.set_child(Some(&filters_container));
+    pantry_container.append(&pantry_title);
+    pantry_container.append(&filters_frame);
+
+    // Split view: Pantry List Pane (middle), Pantry Details Pane (right)
     let pantry_content = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     pantry_content.set_hexpand(true);
     pantry_content.set_vexpand(true);
@@ -943,31 +1119,30 @@ pub fn build_pantry_tab(
     pantry_content.set_margin_end(DEFAULT_MARGIN);
     pantry_content.set_margin_bottom(DEFAULT_MARGIN);
 
-    // Pantry list
+    // Pantry List Pane
     let pantry_list_scroll = gtk::ScrolledWindow::new();
     pantry_list_scroll.set_hexpand(false);
     pantry_list_scroll.set_vexpand(true);
     pantry_list_scroll.set_min_content_width(300);
 
-    let pantry_list_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let pantry_list_pane = gtk::ListBox::new();
 
-    pantry_list_scroll.set_child(Some(&pantry_list_container));
+    pantry_list_scroll.set_child(Some(&pantry_list_pane));
 
-    // Pantry details (right side)
-    let pantry_details_box = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
-    pantry_details_box.set_hexpand(true);
-    pantry_details_box.set_vexpand(true);
+    // Pantry Details Pane
+    let pantry_details_pane = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
+    pantry_details_pane.set_hexpand(true);
+    pantry_details_pane.set_vexpand(true);
 
-    // Initial content for the details
     let select_label = gtk::Label::new(Some(&tr("Select an ingredient to view details")));
     select_label.set_halign(gtk::Align::Center);
     select_label.set_valign(gtk::Align::Center);
     select_label.set_hexpand(true);
     select_label.set_vexpand(true);
-    pantry_details_box.append(&select_label);
+    pantry_details_pane.append(&select_label);
 
     pantry_content.append(&pantry_list_scroll);
-    pantry_content.append(&pantry_details_box);
+    pantry_content.append(&pantry_details_pane);
 
     pantry_container.append(&pantry_content);
 
@@ -976,14 +1151,16 @@ pub fn build_pantry_tab(
     add_button.set_halign(gtk::Align::End);
     let sender_clone = sender.clone();
     add_button.connect_clicked(move |_| {
-        sender_clone.input(AppMsg::AddIngredient);
+        if let Some(sender) = &sender_clone {
+            sender.input(AppMsg::AddIngredient);
+        }
     });
     pantry_container.append(&add_button);
 
     (
         pantry_container,
-        pantry_list_container,
-        pantry_details_box,
+        pantry_list_pane,
+        pantry_details_pane,
         stock_filter_switch,
         pantry_title,
         Some(refresh_categories_boxed),

@@ -387,9 +387,17 @@ pub fn select_kb_entry_in_list(kb_list_box: &gtk::ListBox, kb_slug: &str) {
 
 pub fn build_kb_tab(
     model: &AppModel,
-    sender: &ComponentSender<AppModel>,
+    sender: Option<ComponentSender<AppModel>>,
 ) -> (gtk::Box, gtk::ListBox, gtk::Box, gtk::Label) {
-    // Main container
+    // Knowledge Base Tab UI Structure:
+    // - KB List Pane (middle): shows all KB entries
+    // - KB Details Pane (right): shows details for selected KB entry
+    // - Navigation Pane (left): handled by main app sidebar, not here
+    // The panes are uncoupled except:
+    //   - Selecting a KB entry in the List Pane updates the Details Pane
+    //   - Changing tab in Navigation triggers List Pane update
+
+    // Main container for the KB tab
     let kb_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
 
     // Title
@@ -399,21 +407,21 @@ pub fn build_kb_tab(
     kb_title.set_margin_all(DEFAULT_MARGIN);
     kb_container.append(&kb_title);
 
-    // Split view
+    // Split view: KB List Pane (middle), KB Details Pane (right)
     let kb_content = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     kb_content.set_hexpand(true);
     kb_content.set_vexpand(true);
 
-    // List
+    // KB List Pane
     let kb_list_scroll = gtk::ScrolledWindow::new();
     kb_list_scroll.set_hexpand(false);
     kb_list_scroll.set_vexpand(true);
     kb_list_scroll.set_min_content_width(250);
 
-    let kb_list_box = gtk::ListBox::new();
-    kb_list_box.set_selection_mode(gtk::SelectionMode::Single);
+    let kb_list_pane = gtk::ListBox::new();
+    kb_list_pane.set_selection_mode(gtk::SelectionMode::Single);
 
-    // Populate list
+    // Populate the KB List Pane
     if let Some(ref dm) = model.data_manager {
         let entries = dm.get_all_kb_entries();
         if !entries.is_empty() {
@@ -430,15 +438,17 @@ pub fn build_kb_tab(
                 row.set_child(Some(&title_label));
                 // Store the slug in the row's widget name for retrieval
                 row.set_widget_name(&entry.slug);
-                kb_list_box.append(&row);
+                kb_list_pane.append(&row);
             }
 
-            // Add this after populating the list:
+            // Selection handler for KB List Pane
             let sender_clone = sender.clone();
-            kb_list_box.connect_row_selected(move |_, row_opt| {
+            kb_list_pane.connect_row_selected(move |_, row_opt| {
                 if let Some(row) = row_opt {
                     let slug = row.widget_name().to_string();
-                    sender_clone.input(AppMsg::SelectKnowledgeBaseEntry(slug));
+                    if let Some(sender) = &sender_clone {
+                        sender.input(AppMsg::SelectKnowledgeBaseEntry(slug));
+                    }
                 }
             });
         } else {
@@ -446,35 +456,34 @@ pub fn build_kb_tab(
             let no_entries_label = gtk::Label::new(Some("No KB entries available"));
             no_entries_label.set_margin_all(DEFAULT_MARGIN);
             no_entries_row.set_child(Some(&no_entries_label));
-            kb_list_box.append(&no_entries_row);
+            kb_list_pane.append(&no_entries_row);
         }
     } else {
         let no_data_row = gtk::ListBoxRow::new();
         let no_data_label = gtk::Label::new(Some("Failed to load KB data"));
         no_data_label.set_margin_all(DEFAULT_MARGIN);
         no_data_row.set_child(Some(&no_data_label));
-        kb_list_box.append(&no_data_row);
+        kb_list_pane.append(&no_data_row);
     }
 
-    kb_list_scroll.set_child(Some(&kb_list_box));
+    kb_list_scroll.set_child(Some(&kb_list_pane));
 
-    // Details
-    let kb_details = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
-    kb_details.set_hexpand(true);
-    kb_details.set_vexpand(true);
+    // KB Details Pane
+    let kb_details_pane = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
+    kb_details_pane.set_hexpand(true);
+    kb_details_pane.set_vexpand(true);
 
-    let kb_label = gtk::Label::new(Some("Select an item to view details"));
-    kb_label.set_halign(gtk::Align::Center);
-    kb_label.set_valign(gtk::Align::Center);
-    kb_label.set_hexpand(true);
-    kb_label.set_vexpand(true);
-
-    kb_details.append(&kb_label);
+    let select_label = gtk::Label::new(Some("Select a Knowledge Base entry to view details"));
+    select_label.set_halign(gtk::Align::Center);
+    select_label.set_valign(gtk::Align::Center);
+    select_label.set_hexpand(true);
+    select_label.set_vexpand(true);
+    kb_details_pane.append(&select_label);
 
     kb_content.append(&kb_list_scroll);
-    kb_content.append(&kb_details);
+    kb_content.append(&kb_details_pane);
 
     kb_container.append(&kb_content);
 
-    (kb_container, kb_list_box, kb_details, kb_label)
+    (kb_container, kb_list_pane, kb_details_pane, select_label)
 }

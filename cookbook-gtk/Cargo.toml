@@ -2,9 +2,18 @@
 name = "cookbook-gtk"
 version = "0.1.0"
 edition = "2021"
-description = "A cross-platform recipe and pantry manager GTK4 application"
-authors = ["Cookbook Team"]
-license = "MIT OR Apache-2.0"
+[[bin]]
+name = "cookbook-gtk"
+path = "src/main.rs"
+
+
+[lib]
+name = "cookbook_gtk"
+path = "src/lib.rs"
+
+[dev-dependencies]
+gtk-test = "0.15"
+
 
 [dependencies]
 cookbook-engine = { path = "../cookbook-engine" }

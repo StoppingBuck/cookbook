@@ -68,7 +68,7 @@ pub struct AppWidgets {
     pub recipes_details: gtk::Box,
     pub recipes_list_box: gtk::ListBox,
     pub pantry_label: gtk::Label,
-    pub pantry_list: gtk::Box,
+    pub pantry_list: gtk::ListBox,
     pub pantry_details: gtk::Box,
     pub pantry_in_stock_switch: gtk::Switch,
     pub kb_label: gtk::Label,

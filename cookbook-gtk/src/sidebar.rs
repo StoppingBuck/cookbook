@@ -6,7 +6,7 @@ use crate::types::{AppModel, AppMsg, Tab};
 use crate::ui_constants::*;
 
 /// Builds the sidebar UI for the application
-pub fn build_sidebar(sender: &ComponentSender<AppModel>) -> (gtk::Box, Vec<gtk::Button>) {
+pub fn build_sidebar(sender: Option<ComponentSender<AppModel>>) -> (gtk::Box, Vec<gtk::Button>) {
     // Create the sidebar container
     let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 0);
     sidebar.set_margin_top(DEFAULT_MARGIN);
@@ -35,32 +35,44 @@ pub fn build_sidebar(sender: &ComponentSender<AppModel>) -> (gtk::Box, Vec<gtk::
     // Connect button signals
     let sender_clone = sender.clone();
     recipes_button.connect_clicked(move |_| {
-        sender_clone.input(AppMsg::SwitchTab(Tab::Recipes));
+        if let Some(sender) = &sender_clone {
+            sender.input(AppMsg::SwitchTab(Tab::Recipes));
+        }
     });
 
     let sender_clone = sender.clone();
     pantry_button.connect_clicked(move |_| {
-        sender_clone.input(AppMsg::SwitchTab(Tab::Pantry));
+        if let Some(sender) = &sender_clone {
+            sender.input(AppMsg::SwitchTab(Tab::Pantry));
+        }
     });
 
     let sender_clone = sender.clone();
     kb_button.connect_clicked(move |_| {
-        sender_clone.input(AppMsg::SwitchTab(Tab::KnowledgeBase));
+        if let Some(sender) = &sender_clone {
+            sender.input(AppMsg::SwitchTab(Tab::KnowledgeBase));
+        }
     });
 
     let sender_clone = sender.clone();
     settings_button.connect_clicked(move |_| {
-        sender_clone.input(AppMsg::SwitchTab(Tab::Settings));
+        if let Some(sender) = &sender_clone {
+            sender.input(AppMsg::SwitchTab(Tab::Settings));
+        }
     });
 
     let sender_clone = sender.clone();
     about_button.connect_clicked(move |_| {
-        sender_clone.input(AppMsg::ShowAbout);
+        if let Some(sender) = &sender_clone {
+            sender.input(AppMsg::ShowAbout);
+        }
     });
 
     let sender_clone = sender.clone();
     help_button.connect_clicked(move |_| {
-        sender_clone.input(AppMsg::ShowHelp);
+        if let Some(sender) = &sender_clone {
+            sender.input(AppMsg::ShowHelp);
+        }
     });
 
     // Add buttons to the sidebar

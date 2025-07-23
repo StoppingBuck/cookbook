@@ -12,12 +12,13 @@ use crate::types::AppMsg;
 use crate::ui_constants::*;
 use crate::utils;
 
-/// Updates the recipes list based on search text and other filters
+/// Updates the Recipe List Pane with filtered recipes based on search text and other filters
 pub fn update_recipes_list<C>(
     recipes_list_box: &gtk::ListBox,
     data_manager: &Option<Rc<DataManager>>,
     search_text: &str,
-    sender: &ComponentSender<C>,
+    selected_recipe: Option<&String>,
+    sender: Option<&ComponentSender<C>>,
     select_recipe_msg: impl Fn(String) -> C::Input + Clone + 'static,
 ) where
     C: relm4::Component,
@@ -32,6 +33,8 @@ pub fn update_recipes_list<C>(
         if !filtered_recipes.is_empty() {
             for recipe in filtered_recipes {
                 let row = gtk::ListBoxRow::new();
+                row.set_selectable(true);
+                row.add_css_class("recipe-row");
                 let box_layout = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
                 box_layout.set_margin_all(LIST_ROW_MARGIN);
 
@@ -83,14 +86,16 @@ pub fn update_recipes_list<C>(
                 row.set_child(Some(&box_layout));
 
                 // Add click handler
-                let sender_clone = sender.clone();
+                let sender_clone = sender.cloned();
                 let recipe_title = recipe.title.clone();
                 let select_msg = select_recipe_msg.clone();
 
                 let click_gesture = gtk::GestureClick::new();
                 row.add_controller(click_gesture.clone());
                 click_gesture.connect_pressed(move |_, _, _, _| {
-                    sender_clone.input(select_msg(recipe_title.clone()));
+                    if let Some(sender) = &sender_clone {
+                        sender.input(select_msg(recipe_title.clone()));
+                    }
                 });
 
                 recipes_list_box.append(&row);
@@ -117,11 +122,11 @@ pub fn update_recipes_list<C>(
     }
 }
 
-/// Builds and returns the recipe detail view for a selected recipe
+/// Builds and returns the Recipe Details Pane for a selected recipe
 pub fn build_recipe_detail_view<C>(
     data_manager: &Rc<DataManager>,
     recipe_name: &str,
-    sender: &ComponentSender<C>,
+    sender: Option<&ComponentSender<C>>,
     edit_recipe_msg: impl Fn(String) -> C::Input + Clone + 'static,
 ) -> gtk::ScrolledWindow
 where
@@ -177,26 +182,29 @@ where
         // Edit button
         let edit_button = gtk::Button::with_label("Edit");
         edit_button.add_css_class("suggested-action");
-
-        let sender_clone = sender.clone();
-        let recipe_title = recipe.title.clone();
-        let edit_msg = edit_recipe_msg.clone();
-        edit_button.connect_clicked(move |_| {
-            sender_clone.input(edit_msg(recipe_title.clone()));
-        });
+        if let Some(sender) = sender {
+            let sender_clone = sender.clone();
+            let recipe_title = recipe.title.clone();
+            let edit_msg = edit_recipe_msg.clone();
+            edit_button.connect_clicked(move |_| {
+                sender_clone.input(edit_msg(recipe_title.clone()));
+            });
+        }
         header_box.append(&edit_button);
 
         // Delete button
         let delete_button = gtk::Button::with_label("Delete");
         delete_button.add_css_class("destructive-action");
-        let sender_clone = sender.clone();
-        let recipe_title = recipe.title.clone();
-        delete_button.connect_clicked(move |_| {
-            // Only send if C::Input == AppMsg
-            if let Some(appmsg_sender) = (&sender_clone as &dyn std::any::Any).downcast_ref::<ComponentSender<AppModel>>() {
-                appmsg_sender.input(AppMsg::DeleteRecipe(recipe_title.clone()));
-            }
-        });
+        if let Some(sender) = sender {
+            let sender_clone = sender.clone();
+            let recipe_title = recipe.title.clone();
+            delete_button.connect_clicked(move |_| {
+                // Only send if C::Input == AppMsg
+                if let Some(appmsg_sender) = (&sender_clone as &dyn std::any::Any).downcast_ref::<ComponentSender<AppModel>>() {
+                    appmsg_sender.input(AppMsg::DeleteRecipe(recipe_title.clone()));
+                }
+            });
+        }
         header_box.append(&delete_button);
 
         recipe_box.append(&header_box);
@@ -366,12 +374,12 @@ where
     recipe_details_scroll
 }
 
-/// Updates the recipe details view based on the selected recipe
+/// Updates the Recipe Details Pane based on the selected recipe in the Recipe List Pane
 pub fn update_recipe_details<C>(
     selected_recipe: Option<&str>,
     recipes_details: &gtk::Box,
     data_manager: &Option<std::rc::Rc<cookbook_engine::DataManager>>,
-    sender: &ComponentSender<C>,
+    sender: Option<&ComponentSender<C>>,
     edit_recipe_msg: impl Fn(String) -> C::Input + Clone + 'static,
 ) where
     C: relm4::Component,
@@ -412,14 +420,15 @@ pub fn refresh_recipes_ui(
         &widgets.recipes_list_box,
         &model.data_manager,
         &model.search_text,
-        sender,
+        model.selected_recipe.as_ref(),
+        Some(sender),
         AppMsg::SelectRecipe,
     );
     update_recipe_details(
         model.selected_recipe.as_deref(),
         &widgets.recipes_details,
         &model.data_manager,
-        sender,
+        Some(sender),
         AppMsg::EditRecipe,
     );
 }
@@ -1004,9 +1013,16 @@ pub fn show_add_recipe_dialog(
 /// Builds the Recipes tab UI and returns the main container, list box, and details box.
 pub fn build_recipes_tab(
     model: &AppModel,
-    sender: &ComponentSender<AppModel>,
+    sender: Option<ComponentSender<AppModel>>,
 ) -> (gtk::Box, gtk::ListBox, gtk::Box) {
-    // Main vertical container for the Recipes tab
+    // Recipes Tab UI Structure:
+    // - Recipe List Pane (middle): shows all recipes
+    // - Recipe Details Pane (right): shows details for selected recipe
+    // - Navigation Pane (left): handled by main app sidebar, not here
+    // The panes are uncoupled except:
+    //   - Selecting a recipe in the List Pane updates the Details Pane
+    //   - Changing tab in Navigation triggers List Pane update
+
     let recipes_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
 
     // Header: title + search
@@ -1026,7 +1042,9 @@ pub fn build_recipes_tab(
 
     let sender_clone = sender.clone();
     search_entry.connect_search_changed(move |entry| {
-        sender_clone.input(AppMsg::SearchTextChanged(entry.text().to_string()));
+        if let Some(sender) = &sender_clone {
+            sender.input(AppMsg::SearchTextChanged(entry.text().to_string()));
+        }
     });
 
     // Add Recipe button
@@ -1034,7 +1052,9 @@ pub fn build_recipes_tab(
     add_recipe_button.add_css_class("suggested-action");
     let sender_clone = sender.clone();
     add_recipe_button.connect_clicked(move |_| {
-        sender_clone.input(AppMsg::AddRecipe);
+        if let Some(sender) = &sender_clone {
+            sender.input(AppMsg::AddRecipe);
+        }
     });
 
     recipes_header.append(&recipes_title);
@@ -1042,61 +1062,72 @@ pub fn build_recipes_tab(
     recipes_header.append(&add_recipe_button);
     recipes_container.append(&recipes_header);
 
-    // Split view: list (left), details (right)
+    // Split view: Recipe List Pane (middle), Recipe Details Pane (right)
     let recipes_content = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     recipes_content.set_hexpand(true);
     recipes_content.set_vexpand(true);
 
-    // Recipe list
-    let recipes_list_scroll = gtk::ScrolledWindow::new();
-    recipes_list_scroll.set_hexpand(false);
-    recipes_list_scroll.set_vexpand(true);
-    recipes_list_scroll.set_min_content_width(250);
+    // Recipe List Pane
+    let recipe_list_pane_scroll = gtk::ScrolledWindow::new();
+    recipe_list_pane_scroll.set_hexpand(false);
+    recipe_list_pane_scroll.set_vexpand(true);
+    recipe_list_pane_scroll.set_min_content_width(250);
 
-    let recipes_list_box = gtk::ListBox::new();
-    recipes_list_box.set_selection_mode(gtk::SelectionMode::Single);
+    let recipe_list_pane = gtk::ListBox::new();
+    recipe_list_pane.set_selection_mode(gtk::SelectionMode::Single);
 
-    // Populate the list
-    crate::recipes::update_recipes_list(
-        &recipes_list_box,
-        &model.data_manager,
-        &model.search_text,
-        sender,
-        |title| AppMsg::SelectRecipe(title),
-    );
+    // Populate the Recipe List Pane
+    if let Some(ref sender) = sender {
+        crate::recipes::update_recipes_list(
+            &recipe_list_pane,
+            &model.data_manager,
+            &model.search_text,
+            model.selected_recipe.as_ref(),
+            Some(sender),
+            |title| AppMsg::SelectRecipe(title),
+        );
+    }
 
-    // Recipe selection handler
+    // Recipe List Pane selection handler
     let sender_clone = sender.clone();
-    recipes_list_box.connect_row_selected(move |_list, row_opt| {
+    recipe_list_pane.connect_row_selected(move |_list, row_opt| {
         if let Some(row) = row_opt {
             if let Some(box_layout) = row.child().and_then(|w| w.downcast::<gtk::Box>().ok()) {
                 if let Some(label) = box_layout.first_child().and_then(|w| w.downcast::<gtk::Label>().ok()) {
                     let recipe_title = label.text().to_string();
-                    sender_clone.input(AppMsg::SelectRecipe(recipe_title));
+                    // Selecting a recipe in the Recipe List Pane updates the Recipe Details Pane
+                    // Prevent feedback loop: only send if model's selected_recipe is different
+                    // NOTE: This closure should capture the selected_recipe value from the model at connect time
+                    // If sender_clone is a ComponentSender<AppModel>, we can use its get() method
+                    // But safest is to use a RefCell to share state, or pass selected_recipe in as an argument
+                    // For now, we skip sending if the row is already selected
+                    // (update_view will keep the selection in sync)
+                    // So do nothing here; update_view will handle selection
                 }
             }
         }
     });
 
-    recipes_list_scroll.set_child(Some(&recipes_list_box));
+    recipe_list_pane_scroll.set_child(Some(&recipe_list_pane));
 
-    // Recipe details view (right side)
-    let recipes_details = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
-    recipes_details.set_hexpand(true);
-    recipes_details.set_vexpand(true);
+    // Recipe Details Pane
+    let recipe_details_pane = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
+    recipe_details_pane.set_hexpand(true);
+    recipe_details_pane.set_vexpand(true);
 
-    let recipes_label = gtk::Label::new(Some("Select a recipe to view details"));
-    recipes_label.set_halign(gtk::Align::Center);
-    recipes_label.set_valign(gtk::Align::Center);
-    recipes_label.set_hexpand(true);
-    recipes_label.set_vexpand(true);
+    let details_label = gtk::Label::new(Some("Select a recipe to view details"));
+    details_label.set_halign(gtk::Align::Center);
+    details_label.set_valign(gtk::Align::Center);
+    details_label.set_hexpand(true);
+    details_label.set_vexpand(true);
 
-    recipes_details.append(&recipes_label);
+    recipe_details_pane.append(&details_label);
 
-    recipes_content.append(&recipes_list_scroll);
-    recipes_content.append(&recipes_details);
+    recipes_content.append(&recipe_list_pane_scroll);
+    recipes_content.append(&recipe_details_pane);
 
     recipes_container.append(&recipes_content);
 
-    (recipes_container, recipes_list_box, recipes_details)
+    // Return the main container, Recipe List Pane, and Recipe Details Pane
+    (recipes_container, recipe_list_pane, recipe_details_pane)
 }

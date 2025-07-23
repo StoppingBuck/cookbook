@@ -117,6 +117,7 @@ source $HOME/.cargo/env
 3. **Install GTK4 development libraries:**
    ```bash
    sudo pacman -S gtk4 gdk-pixbuf2 glib2 xz
+   sudo pacman -S gtk3 (for UI testing framework)
    ```
 4. **Install Java (JDK 21+):**
    ```bash

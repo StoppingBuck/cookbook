@@ -1,5 +1,4 @@
 > This file exists to help GitHub Copilot understand the structure, purpose and intended behavior of the `cookbook` project. It may also help human collaborators get oriented faster.
-pub struct Pantry {
 
 # Cookbook Project - AI Agent Instructions
 
@@ -21,12 +20,12 @@ pub struct Pantry {
 - **Never rely on file name matching for KB links—always use `slug` fields.**
 
 ## Developer Workflows
-- **Build, run, test, clean:** Use `./dev.sh` for all major tasks (see README.md for commands).
   - Example: `./dev.sh gtk`, `./dev.sh android-build`, `./dev.sh check`, etc.
-- **Always run `cargo check` after edits to Rust code.**
-- **Android:** Build with Gradle, run via Android Studio or `./dev.sh android-*`.
-- **GTK:** Run with `cargo run -p cookbook-gtk` or via dev.sh.
-- **Do not modify build artifacts (target/, etc). Only edit files in src/ and example/data/.**
+ **Cookbook-GTK compile-check loop:**
+  - When editing any code in `cookbook-gtk`, always run `./dev.sh gtk-compile` immediately after each edit.
+  - If there are any compilation errors, address all errors before running `./dev.sh gtk-compile` again.
+  - Only stop once there are no more compilation errors.
+  - This loop is the default workflow for cookbook-gtk development.
 
 ## Integration Points
 - **FFI boundary:** Pantryman Android app uses JNI to call Rust code in `cookbook-engine` (see `pantryman/rust-bridge`).

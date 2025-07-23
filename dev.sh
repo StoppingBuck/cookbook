@@ -26,7 +26,8 @@ show_help() {
     echo ""
     echo "Commands:"
     echo "  gtk                 - Build and run the GTK cookbook application"
-    echo "  android-build       - Build the Pantryman Android app"
+    echo "  gtk-compile         - Compile the GTK cookbook application (no run)"
+   echo "  gtk-test            - Run all tests for cookbook-gtk (unit, integration, UI)"
     echo "  android-install     - Build and install Pantryman to connected device"
     echo "  android-run         - Build, install, and run Pantryman"
     echo "  android-logs        - Monitor Android app logs"
@@ -36,6 +37,11 @@ show_help() {
     echo "  test                - Run all tests"
     echo "  help                - Show this help message"
     echo ""
+}
+gtk_compile() {
+    echo -e "${CYAN}🔧 Compiling GTK application...${NC}"
+    cd "$PROJECT_ROOT"
+    RUST_BACKTRACE=1 cargo build -p cookbook-gtk
 }
 
 check_device() {
@@ -124,6 +130,9 @@ case "${1:-help}" in
     "gtk")
         run_gtk
         ;;
+    "gtk-compile")
+        gtk_compile
+        ;;
     "android-build")
         android_build
         ;;
@@ -131,16 +140,22 @@ case "${1:-help}" in
         android_install
         ;;
     "android-run")
-        android_run
+       android_logs
         ;;
     "android-logs")
-        android_logs
+       run_check
         ;;
     "android-data")
-        android_data
+       run_clean
         ;;
     "check")
-        run_check
+       run_test
+        ;;
+    "gtk-test")
+        echo -e "${CYAN}🧪 Running GTK tests...${NC}"
+        cd "$PROJECT_ROOT"
+        cargo test --manifest-path cookbook-gtk/Cargo.toml --all-features
+        echo -e "${GREEN}✅ GTK tests complete${NC}"
         ;;
     "clean")
         run_clean

@@ -1,3 +1,8 @@
+/* Recipe list selection highlight */
+.recipe-row:selected {
+  background-color: #d0e6ff;
+  border-radius: 4px;
+}
 /* General styles */
 .tag {
   font-size: small;
