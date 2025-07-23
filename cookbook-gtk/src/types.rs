@@ -57,6 +57,7 @@ pub struct AppModel {
     pub error_message: Option<String>,
     pub refresh_category_popover: Cell<bool>, // Use Cell for interior mutability
     pub user_settings: std::rc::Rc<std::cell::RefCell<UserSettings>>, // Now Rc<RefCell<UserSettings>>
+    pub pantry_list_needs_rebuild: Cell<bool>,
 }
 
 /// References to GTK widgets used in the application
@@ -77,4 +78,5 @@ pub struct AppWidgets {
     //pub settings_label: gtk::Label,
     pub sidebar_buttons: Vec<gtk::Button>,
     pub refresh_categories: Option<Box<dyn Fn(&AppModel) + 'static>>,
+    pub pantry_row_map: std::collections::HashMap<String, gtk::ListBoxRow>, // slug → ListBoxRow
 }

@@ -22,6 +22,7 @@ use std::path::PathBuf;
 use crate::user_settings::UserSettings;
 use cookbook_engine::DataManager;
 use ui_constants::*;
+use relm4::RelmWidgetExt;
 
 impl SimpleComponent for AppModel {
     type Init = ();
@@ -51,7 +52,48 @@ impl SimpleComponent for AppModel {
     }
 
     fn update_view(&self, widgets: &mut Self::Widgets, sender: ComponentSender<Self>) {
-        // ...existing code from main.rs...
+        // --- DEBUG: update_view entry ---
+        println!("DEBUG: update_view - Ingredient selection logic entered. selected_ingredient={:?}", self.selected_ingredient);
+        // Pantry Details Pane update logic
+        if let Some(selected_slug) = &self.selected_ingredient {
+            println!("DEBUG: update_view - Rebuilding details pane for slug={:?}", selected_slug);
+            while let Some(child) = widgets.pantry_details.first_child() {
+                widgets.pantry_details.remove(&child);
+            }
+            if let Some(ref dm) = self.data_manager {
+                println!("DEBUG: update_view - Calling build_ingredient_detail_view for slug={:?}", selected_slug);
+                let detail_view = crate::pantry::build_ingredient_detail_view(
+                    dm,
+                    selected_slug,
+                    &sender,
+                    |_| crate::types::AppMsg::SwitchTab(crate::types::Tab::Pantry),
+                    |_| crate::types::AppMsg::SelectKnowledgeBaseEntry(String::new()),
+                    |_| crate::types::AppMsg::SelectRecipe(String::new()),
+                    |_| crate::types::AppMsg::EditIngredient(String::new()),
+                );
+                widgets.pantry_details.append(&detail_view);
+                println!("DEBUG: update_view - Detail view appended for slug={:?}", selected_slug);
+            } else {
+                println!("DEBUG: update_view - No DataManager available");
+                let not_found_label = gtk::Label::new(Some("No DataManager available"));
+                not_found_label.set_halign(gtk::Align::Center);
+                not_found_label.set_valign(gtk::Align::Center);
+                widgets.pantry_details.append(&not_found_label);
+            }
+        } else {
+            // No ingredient selected, show placeholder
+            println!("DEBUG: update_view - No ingredient selected, clearing selection");
+            while let Some(child) = widgets.pantry_details.first_child() {
+                widgets.pantry_details.remove(&child);
+            }
+            let select_label = gtk::Label::new(Some("Select an ingredient to view details"));
+            select_label.set_halign(gtk::Align::Center);
+            select_label.set_valign(gtk::Align::Center);
+            select_label.set_hexpand(true);
+            select_label.set_vexpand(true);
+            widgets.pantry_details.append(&select_label);
+        }
+        // ...existing code...
     }
 }
 
@@ -94,6 +136,7 @@ let mut model = AppModel {
     error_message: None,
     refresh_category_popover: Cell::new(false),
     user_settings: user_settings_rc.clone(),
+    pantry_list_needs_rebuild: Cell::new(true),
 };
 model.data_manager = match DataManager::new(&data_dir) {
     Ok(manager) => Some(Rc::new(manager)),
@@ -182,7 +225,45 @@ let mut widgets = AppWidgets {
     kb_details,
     sidebar_buttons,
     refresh_categories: None,
+    pantry_row_map: std::collections::HashMap::new(), // slug → ListBoxRow
 };
 widgets.refresh_categories = refresh_categories;
 relm4::ComponentParts { model, widgets }
+}
+
+// Add debug breadcrumbs to build_ingredient_detail_view
+#[allow(dead_code)]
+pub fn build_ingredient_detail_view<C>(
+    data_manager: &Rc<DataManager>,
+    ingredient_id: &str, // now this is always a slug
+    sender: &ComponentSender<C>,
+    switch_tab_msg: impl Fn(crate::Tab) -> C::Input + Clone + 'static,
+    select_kb_entry_msg: impl Fn(String) -> C::Input + Clone + 'static,
+    select_recipe_msg: impl Fn(String) -> C::Input + Clone + 'static,
+    edit_ingredient_msg: impl Fn(String) -> C::Input + Clone + 'static,
+) -> gtk::Box
+where
+    C: relm4::Component,
+{
+    println!("DEBUG: build_ingredient_detail_view - called with ingredient_id={:?}", ingredient_id);
+    // Create a small details view
+    let details_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
+    details_container.set_margin_all(DEFAULT_MARGIN);
+    let lang = data_manager
+        .get_all_ingredients()
+        .first()
+        .and_then(|_| Some("en")) // fallback if needed
+        .unwrap_or("en");
+    // Try to resolve by slug or translation
+    let ingredient = data_manager
+        .find_ingredient_by_name_or_translation(ingredient_id, lang);
+    println!("DEBUG: build_ingredient_detail_view - find_ingredient_by_name_or_translation returned: {:?}", ingredient);
+    if let Some(ingredient) = ingredient {
+        println!("DEBUG: build_ingredient_detail_view - Found ingredient: {:?}", ingredient.name);
+        // ...existing code...
+    } else {
+        println!("DEBUG: build_ingredient_detail_view - Ingredient not found for id={:?}", ingredient_id);
+        // ...existing code...
+    }
+    details_container
 }

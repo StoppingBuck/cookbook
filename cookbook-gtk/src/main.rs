@@ -113,6 +113,7 @@ impl SimpleComponent for AppModel {
             error_message: None,
             refresh_category_popover: Cell::new(false),
             user_settings: user_settings_rc.clone(),
+            pantry_list_needs_rebuild: Cell::new(true),
         };
 
         // Load data using the DataManager
@@ -249,6 +250,7 @@ impl SimpleComponent for AppModel {
             //settings_label: settings_label.clone(),
             sidebar_buttons,
             refresh_categories: None,
+            pantry_row_map: std::collections::HashMap::new(), // slug → ListBoxRow
         };
 
         // We call update_view after initializing AppModel and AppWidgets so the entire UI is rendered correctly at app start - for example, the sidebar buttons are styled correctly (Recipes tab is highlighted)
@@ -312,17 +314,21 @@ impl SimpleComponent for AppModel {
             AppMsg::TogglePantryCategory(category, is_selected) => {
                 if is_selected && !self.selected_pantry_categories.contains(&category) {
                     self.selected_pantry_categories.push(category);
+                    self.pantry_list_needs_rebuild.set(true);
                 } else if !is_selected {
                     self.selected_pantry_categories.retain(|c| c != &category);
+                    self.pantry_list_needs_rebuild.set(true);
                 }
             }
             // Message: User toggles the in-stock filter
             AppMsg::ToggleInStockFilter(show_in_stock_only) => {
                 self.show_in_stock_only = show_in_stock_only;
+                self.pantry_list_needs_rebuild.set(true);
             }
             // Message: User types in the search bar
             AppMsg::SearchTextChanged(text) => {
                 self.search_text = text;
+                self.pantry_list_needs_rebuild.set(true);
             }
             // Message: User clicks on the Edit Ingredient button
             AppMsg::EditIngredient(ingredient_name) => {
@@ -454,6 +460,7 @@ impl SimpleComponent for AppModel {
                         Ok(updated_manager) => {
                             self.data_manager = Some(Rc::new(updated_manager));
                             // Do not attempt to rebuild pantry tab UI here; update_view will handle it
+                            self.pantry_list_needs_rebuild.set(true);
                         }
                         Err(err) => {
                             let error_message = format!("Failed to reload pantry: {}", err);
@@ -575,60 +582,58 @@ impl SimpleComponent for AppModel {
 
         // Highlight the selected ingredient in the Pantry list
         if self.current_tab == Tab::Pantry {
-            if let Some(ingredient_name) = self.selected_ingredient.as_ref() {
-                println!("DEBUG: update_view - Ingredient selection logic entered. selected_ingredient={:?}", ingredient_name);
-                let mut found = false;
-                let mut i = 0;
-                while let Some(row) = widgets.pantry_list.row_at_index(i) {
-                    println!("DEBUG: update_view - Checking pantry row {}", i);
-                    i += 1;
-                    let label_text = if let Some(child) = row.child() {
-                        if let Some(label) = child.downcast_ref::<gtk::Label>() {
-                            label.text().to_string()
-                        } else if let Some(box_widget) = child.downcast_ref::<gtk::Box>() {
-                            if let Some(first_child) = box_widget.first_child() {
-                                if let Some(label) = first_child.downcast_ref::<gtk::Label>() {
-                                    label.text().to_string()
-                                } else {
-                                    String::new()
-                                }
-                            } else {
-                                String::new()
-                            }
-                        } else {
-                            String::new()
-                        }
-                    } else {
-                        String::new()
-                    };
-                    println!("DEBUG: update_view - Pantry row label_text={:?}", label_text);
-                    if label_text == *ingredient_name {
-                        println!("DEBUG: update_view - Found matching pantry row at index {}", i-1);
-                        let already_selected = widgets.pantry_list.selected_row()
-                            .map(|selected| selected == row)
-                            .unwrap_or(false);
-                        if !already_selected {
-                            widgets.pantry_list.select_row(Some(&row));
-                        }
-                        found = true;
-                        break;
+            if let Some(selected_slug) = self.selected_ingredient.as_ref() {
+                println!("DEBUG: update_view - Ingredient selection logic entered. selected_ingredient(slug)={:?}", selected_slug);
+                if let Some(row) = widgets.pantry_row_map.get(selected_slug) {
+                    let already_selected = widgets.pantry_list.selected_row()
+                        .map(|selected| selected == *row)
+                        .unwrap_or(false);
+                    if !already_selected {
+                        widgets.pantry_list.select_row(Some(row));
+                    }
+                    println!("DEBUG: update_view - Found matching pantry row for slug in map");
+                } else {
+                    println!("DEBUG: update_view - Ingredient not found in pantry_row_map");
+                    if !self.search_text.is_empty() {
+                        let sender_clone = sender.clone();
+                        glib::spawn_future_local(async move {
+                            sender_clone.input(AppMsg::SearchTextChanged(String::new()));
+                        });
                     }
                 }
-                println!("DEBUG: update_view - Ingredient found={}", found);
-                if !found && !self.search_text.is_empty() {
-                    println!("DEBUG: update_view - Ingredient not found, clearing search_text");
-                    let sender_clone = sender.clone();
-                    glib::spawn_future_local(async move {
-                        sender_clone.input(AppMsg::SearchTextChanged(String::new()));
-                    });
+                // Update details pane for selected ingredient
+                if let Some(data_manager) = &self.data_manager {
+                    while let Some(child) = widgets.pantry_details.first_child() {
+                        widgets.pantry_details.remove(&child);
+                    }
+                    let slug_for_closures = selected_slug.clone();
+                    let detail = pantry::build_ingredient_detail_view(
+                        data_manager,
+                        selected_slug,
+                        &sender,
+                        move |_| AppMsg::SwitchTab(Tab::Pantry),
+                        move |_| AppMsg::SelectKnowledgeBaseEntry(String::new()),
+                        move |_| AppMsg::SelectRecipe(String::new()),
+                        move |_| AppMsg::EditIngredient(slug_for_closures.clone()),
+                    );
+                    widgets.pantry_details.append(&detail);
                 }
             } else {
-                println!("DEBUG: update_view - No ingredient selected, clearing selection");
-                widgets.pantry_list.select_row(None::<&gtk::ListBoxRow>);
+                // Only clear selection if a row is actually selected
+                if widgets.pantry_list.selected_row().is_some() {
+                    println!("DEBUG: update_view - No ingredient selected, clearing selection");
+                    widgets.pantry_list.select_row(None::<&gtk::ListBoxRow>);
+                } else {
+                    println!("DEBUG: update_view - No ingredient selected, but no row is selected, skipping selection clear");
+                }
+                // Show placeholder in details pane
+                while let Some(child) = widgets.pantry_details.first_child() {
+                    widgets.pantry_details.remove(&child);
+                }
+                let placeholder = gtk::Label::new(Some("Select an ingredient to view details"));
+                widgets.pantry_details.append(&placeholder);
             }
         }
-
-        // ...existing code...
 
         // Update recipe details if a recipe is selected
         if self.current_tab == Tab::Recipes {
@@ -676,8 +681,9 @@ impl SimpleComponent for AppModel {
             dialogs::show_help_dialog(&widgets.window, &sender, AppMsg::ResetDialogs);
         }
 
-        // Rebuild pantry list when filters change or search text changes
-        if self.current_tab == Tab::Pantry {
+        // Only rebuild pantry list if flagged
+        if self.current_tab == Tab::Pantry && self.pantry_list_needs_rebuild.get() {
+            widgets.pantry_row_map.clear();
             pantry::rebuild_pantry_list(
                 &widgets.pantry_list,
                 &self.search_text,
@@ -687,7 +693,10 @@ impl SimpleComponent for AppModel {
                 self,
                 Some(sender.clone()),
                 Some(&widgets.pantry_details),
+                Some(&mut widgets.pantry_row_map),
             );
+            self.pantry_list_needs_rebuild.set(false);
+            self.pantry_list_needs_rebuild.set(false);
         }
 
         // Update recipes list and details when ReloadRecipes is triggered

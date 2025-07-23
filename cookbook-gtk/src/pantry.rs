@@ -8,6 +8,7 @@ use gtk::prelude::*;
 use relm4::gtk;
 use relm4::ComponentSender;
 use relm4::RelmWidgetExt;
+use relm4::RelmIterChildrenExt;
 use std::rc::Rc;
 
 /// Rebuilds the Pantry List Pane with filtered ingredients based on search text and category filters
@@ -20,6 +21,7 @@ pub fn rebuild_pantry_list<C>(
     model: &AppModel,
     sender: Option<ComponentSender<C>>,
     pantry_details_box: Option<&gtk::Box>,
+    mut pantry_row_map: Option<&mut std::collections::HashMap<String, gtk::ListBoxRow>>, // NEW
 ) where
     C: relm4::Component + 'static,
 {
@@ -144,6 +146,14 @@ pub fn rebuild_pantry_list<C>(
                     });
 
                     row.set_child(Some(&item_row));
+                    // Store the actual slug as row data for selection
+                    unsafe {
+                        row.set_data::<String>("slug", slug.clone());
+                    }
+                    // Populate pantry_row_map if provided
+                    if let Some(ref mut map) = pantry_row_map {
+                        map.insert(slug.clone(), row.clone());
+                    }
                     pantry_list.append(&row);
                 }
             }
@@ -1156,6 +1166,40 @@ pub fn build_pantry_tab(
         }
     });
     pantry_container.append(&add_button);
+
+    // --- DEBUG: Breadcrumb for ListBox selection ---
+    println!("DEBUG: [build_pantry_tab] Setting up ListBox selection handler");
+    let pantry_details_box_clone = pantry_details_pane.clone();
+    // let model_clone = model.clone();
+    let sender_clone = sender.clone();
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    let selected_ingredient = Rc::new(RefCell::new(model.selected_ingredient.clone()));
+    let selected_ingredient_ref = selected_ingredient.clone();
+    pantry_list_pane.connect_row_selected(move |_listbox, row_opt| {
+        println!("DEBUG: [ListBox] row_selected triggered");
+        if let Some(row) = row_opt {
+            // Retrieve the actual slug from row data
+            if let Some(nn_slug) = unsafe { row.data::<String>("slug") } {
+                let slug_ref = unsafe { nn_slug.as_ref() };
+                println!("DEBUG: [ListBox] Selected slug={:?}", slug_ref);
+                // Only send SelectIngredient if the selected slug is different from the model's selected_ingredient
+                if let Some(sender) = &sender_clone {
+                    if selected_ingredient_ref.borrow().as_deref() != Some(slug_ref.as_str()) {
+                        sender.input(AppMsg::SelectIngredient(slug_ref.clone()));
+                        *selected_ingredient_ref.borrow_mut() = Some(slug_ref.clone());
+                        println!("DEBUG: [ListBox] Sent SelectIngredient message");
+                    } else {
+                        println!("DEBUG: [ListBox] Ingredient already selected, not sending message");
+                    }
+                }
+            } else {
+                println!("DEBUG: [ListBox] Selected row has no slug data");
+            }
+        } else {
+            println!("DEBUG: [ListBox] No row selected");
+        }
+    });
 
     (
         pantry_container,
