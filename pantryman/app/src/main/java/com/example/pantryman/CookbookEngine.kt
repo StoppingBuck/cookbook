@@ -28,9 +28,22 @@ class CookbookEngine(dataDir: String) {
     private val gson = Gson()
     
     init {
-        System.loadLibrary("pantryman_bridge")
+        try {
+            Log.d("CookbookEngine", "Loading native library: pantryman_bridge")
+            System.loadLibrary("pantryman_bridge")
+            Log.d("CookbookEngine", "Native library loaded successfully")
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e("CookbookEngine", "Failed to load native library: ${e.message}")
+            throw RuntimeException("Failed to load native library pantryman_bridge", e)
+        } catch (e: Exception) {
+            Log.e("CookbookEngine", "Unexpected error loading native library: ${e.message}")
+            throw e
+        }
+        Log.d("CookbookEngine", "Calling createDataManager with dataDir: $dataDir")
         nativePtr = createDataManager(dataDir)
+        Log.d("CookbookEngine", "createDataManager returned nativePtr: $nativePtr")
         if (nativePtr == 0L) {
+            Log.e("CookbookEngine", "Failed to initialize cookbook engine with data directory: $dataDir")
             throw RuntimeException("Failed to initialize cookbook engine with data directory: $dataDir")
         }
     }

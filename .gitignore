@@ -45,11 +45,7 @@ captures/
 *.aab
 output.json
 
-# Android NDK
-android-ndk*/
-
 # JNI libs
 *.jnilib
 
-thoughts
 #/example/

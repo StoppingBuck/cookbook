@@ -500,12 +500,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showError(message: String) {
+        Log.e("MainActivity", "UI error: $message")
         AlertDialog.Builder(this)
             .setTitle("Error")
             .setMessage(message)
             .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
             .show()
-        
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 

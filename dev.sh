@@ -31,10 +31,7 @@ show_help() {
     echo "  gtk                 - Build and run the GTK cookbook application"
     echo "  gtk-compile         - Compile the GTK cookbook application (no run)"
     echo "  gtk-test            - Run all tests for cookbook-gtk (unit, integration, UI)"
-    echo "  android-install     - Build and install Pantryman to connected device"
-    echo "  android-run         - Build, install, and run Pantryman"
-    echo "  android-logs        - Monitor Android app logs"
-    echo "  android-data        - Show current Android app data directory contents"
+    echo "  android             - Build, install, run, and stream logs for Pantryman (Android)"
     echo "  check               - Run cargo check on all Rust components"
     echo "  clean               - Clean all build artifacts"
     echo "  test                - Run all tests"
@@ -62,21 +59,34 @@ run_gtk() {
     RUST_BACKTRACE=1 cargo run -p cookbook-gtk
 }
 
-android_build() {
+
+# Combined android workflow: build, install, run, and stream logs
+android() {
+    clear
+    
+    export PATH="/mnt/c/Android/platform-tools:$PATH"
+    export ANDROID_NDK_HOME="/opt/android-ndk" # Adjust as needed½
+    export ANDROID_SDK_ROOT="/mnt/c/Users/madsp/AppData/Local/Android/Sdk" # Adjust as needed
+
+    echo -e "${CYAN}🔧 Building Rust JNI library for Android...${NC}"
+    cd "$PANTRYMAN_DIR/rust-bridge"
+    if ! command -v cargo-ndk >/dev/null 2>&1; then
+        echo -e "${YELLOW}⚠️  cargo-ndk not found, installing...${NC}"
+        cargo install cargo-ndk
+    fi
+    cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release
+    echo -e "${GREEN}✅ Rust JNI library built and copied${NC}"
+
     echo -e "${CYAN}🔧 Building Pantryman Android app...${NC}"
     cd "$PANTRYMAN_DIR"
     gradle assembleDebug
     echo -e "${GREEN}✅ Build complete${NC}"
-}
 
-android_install() {
-    android_build
+    # Install
     check_device
     echo -e "${CYAN}📱 Installing to device...${NC}"
     cd "$PANTRYMAN_DIR"
-    # Set Windows SDK and platform-tools for Gradle
-    export PATH="/mnt/c/Android/platform-tools:$PATH"
-    export ANDROID_SDK_ROOT="/mnt/c/Users/madsp/AppData/Local/Android/Sdk"
+    
     if ! ADB=$ADB gradle installDebug; then
         echo -e "${YELLOW}⚠️  Gradle installDebug failed, trying manual APK install...${NC}"
         APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
@@ -92,20 +102,14 @@ android_install() {
     else
         echo -e "${GREEN}✅ Installation complete${NC}"
     fi
-}
 
-android_run() {
-    android_install
+    # Run
     echo -e "${CYAN}🚀 Starting app...${NC}"
     $ADB shell am start -n "$APP_PACKAGE/.MainActivity"
     echo -e "${GREEN}✅ App started${NC}"
-}
 
-android_logs() {
-    check_device
-    echo -e "${CYAN}📊 Monitoring Android logs (Press Ctrl+C to stop)...${NC}"
-    echo "Filtering for: MainActivity, CookbookEngine"
-    echo ""
+    # Logs
+    echo -e "${CYAN}📊 Streaming logs (Press Ctrl+C to stop)...${NC}"
     $ADB logcat | grep --line-buffered -E "(MainActivity|CookbookEngine)"
 }
 
@@ -152,20 +156,8 @@ case "${1:-help}" in
     "gtk-compile")
         gtk_compile
         ;;
-    "android-build")
-        android_build
-        ;;
-    "android-install")
-        android_install
-        ;;
-    "android-run")
-        android_run
-        ;;
-    "android-logs")
-        android_logs
-        ;;
-    "android-data")
-        android_data
+    "android")
+        android
         ;;
     "check")
        run_test

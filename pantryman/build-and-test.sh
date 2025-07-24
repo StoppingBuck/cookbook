@@ -4,9 +4,6 @@
 
 set -e
 
-# Set up Android NDK environment
-export ANDROID_NDK_HOME="/opt/android-ndk-r26d"
-
 echo "🔧 Building Rust bridge library for Android..."
 cd rust-bridge
 

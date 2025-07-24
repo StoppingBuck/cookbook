@@ -45,6 +45,9 @@ This guide will help you set up your development environment for the Cookbook pr
    ```bash
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    source $HOME/.cargo/env
+   
+   To enable cross-compiling to Android:
+   rustup target add aarch64-linux-android
    ```
 4. **Install GTK4 development libraries:**
    ```bash
@@ -79,6 +82,9 @@ This guide will help you set up your development environment for the Cookbook pr
      - Follow the setup wizard to install the SDK and NDK inside WSL.
      - If you are in WSL, make sure you have WSLg or another X Server running in order for Pantryman to render in Windows.
    - create pantryman/local.properties with a line to where you put the SDK: sdk.dir=/home/yourusername/Android/Sdk
+
+8. If running WSL:
+1. Run ADB on Windows and Connect from WSL
 
 ### Oracle Linux 9
 
@@ -133,6 +139,9 @@ source $HOME/.cargo/env
 6. **Android SDK & NDK:**
    - **Install Android Studio:**
      ```bash
+
+   Install android-ndk from the AUR (or through the Studio)
+
      # Download the latest Android Studio .tar.gz for Linux from:
      # https://developer.android.com/studio
      # Example (update version as needed):
