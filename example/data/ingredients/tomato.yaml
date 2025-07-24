@@ -4,4 +4,7 @@ category: vegetable
 kb: null
 tags:
 - vegetable
-translations: null
+translations:
+  en:
+    one: tomato
+    other: tomatoes

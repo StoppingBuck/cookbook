@@ -4,4 +4,7 @@ category: protein
 kb: null
 tags:
 - protein
-translations: null
+translations:
+  en:
+    one: egg
+    other: eggs

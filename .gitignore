@@ -52,4 +52,4 @@ android-ndk*/
 *.jnilib
 
 thoughts
-/example/
+#/example/

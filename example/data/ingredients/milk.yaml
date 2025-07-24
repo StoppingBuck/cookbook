@@ -1,0 +1,9 @@
+name: milk
+slug: milk
+category: dairy
+kb: milk
+tags: []
+translations:
+  en:
+    one: milk
+    other: milk

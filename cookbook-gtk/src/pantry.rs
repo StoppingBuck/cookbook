@@ -52,13 +52,34 @@ pub fn rebuild_pantry_list<C>(
 
     for ingredient in &filtered_ingredients {
         let is_in_stock = dm.is_in_pantry(&ingredient.name);
-        let quantity = dm
-            .get_pantry_item(&ingredient.name)
-            .and_then(|item| item.quantity);
-        let quantity_type = dm
-            .get_pantry_item(&ingredient.name)
-            .map(|item| item.quantity_type.clone());
-        let display_name = DataManager::ingredient_display_name(ingredient, lang, quantity);
+        let pantry_item = dm.get_pantry_item(&ingredient.name);
+        let quantity = pantry_item.and_then(|item| item.quantity);
+        let quantity_type = pantry_item.and_then(|item| {
+            if item.quantity_type.is_empty() { None } else { Some(item.quantity_type.clone()) }
+        });
+        // Pluralization logic
+        let use_plural = if is_in_stock {
+            match (quantity, quantity_type.as_deref()) {
+                (Some(q), Some(unit)) if !unit.is_empty() => q > 0.0,
+                (Some(q), None) | (Some(q), Some(_)) => q > 1.0,
+                _ => false,
+            }
+        } else {
+            false
+        };
+        let display_name = if let Some(translations) = &ingredient.translations {
+            if let Some(forms) = translations.get(lang) {
+                if use_plural {
+                    forms.other.clone()
+                } else {
+                    forms.one.clone()
+                }
+            } else {
+                ingredient.name.clone()
+            }
+        } else {
+            ingredient.name.clone()
+        };
         let slug = ingredient.slug.clone();
         pantry_items_by_category
             .entry(ingredient.category.clone())
@@ -461,6 +482,23 @@ pub fn show_edit_ingredient_dialog(
     name_box.append(&name_entry);
     content_area.append(&name_box);
 
+    // Name (plural) field
+    let plural_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
+    let plural_label = gtk::Label::new(Some("Name (plural):"));
+    plural_label.set_halign(gtk::Align::Start);
+    plural_label.set_width_chars(12);
+    let plural_entry = gtk::Entry::new();
+    // Pre-fill with translations.en.other if available, else empty
+    if let Some(translations) = &ingredient.translations {
+        if let Some(forms) = translations.get("en") {
+            plural_entry.set_text(&forms.other);
+        }
+    }
+    plural_entry.set_hexpand(true);
+    plural_box.append(&plural_label);
+    plural_box.append(&plural_entry);
+    content_area.append(&plural_box);
+
     // Category field
     let category_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
     let category_label = gtk::Label::new(Some("Category:"));
@@ -546,6 +584,7 @@ pub fn show_edit_ingredient_dialog(
     dialog.connect_response(move |dialog, response| {
         if response == gtk::ResponseType::Accept {
             let new_name = name_entry.text().to_string();
+            let new_plural = plural_entry.text().to_string();
             if new_name.trim().is_empty() {
                 let error_dialog = gtk::MessageDialog::new(
                     None::<&gtk::Window>,
@@ -570,13 +609,20 @@ pub fn show_edit_ingredient_dialog(
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect::<Vec<String>>();
+            // Write translations.en.one and .other
+            let mut translations = std::collections::HashMap::new();
+            let en_map = cookbook_engine::TranslationForms {
+                one: new_name.clone(),
+                other: if !new_plural.trim().is_empty() { new_plural.clone() } else { new_name.clone() },
+            };
+            translations.insert("en".to_string(), en_map);
             let new_ingredient = cookbook_engine::Ingredient {
                 name: new_name.clone(),
                 slug: new_name.clone(), // Use name as slug for now (should be slugified)
                 category: new_category,
                 kb: new_kb,
                 tags: Some(new_tags),
-                translations: None, // Not editable in dialog yet
+                translations: Some(translations),
             };
             let in_stock = in_stock_check.is_active();
             let quantity_text = quantity_entry.text().to_string();
