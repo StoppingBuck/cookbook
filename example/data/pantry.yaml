@@ -4,10 +4,6 @@ items:
   quantity: 2.0
   quantity_type: ''
   last_updated: 2025-07-24
-- ingredient: flour
-  quantity: 1.0
-  quantity_type: kg
-  last_updated: 2025-07-24
 - ingredient: pasta
   quantity: 1.0
   quantity_type: t

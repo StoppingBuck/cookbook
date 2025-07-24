@@ -573,6 +573,20 @@ pub fn show_edit_ingredient_dialog(
         quantity_type_entry.set_text(&pantry_item.quantity_type);
     }
 
+    // Disable quantity/unit fields if not in stock
+    let set_qty_unit_sensitive = |enabled: bool| {
+        quantity_entry.set_sensitive(enabled);
+        quantity_type_entry.set_sensitive(enabled);
+    };
+    set_qty_unit_sensitive(in_stock_check.is_active());
+    let quantity_entry_clone = quantity_entry.clone();
+    let quantity_type_entry_clone = quantity_type_entry.clone();
+    in_stock_check.connect_toggled(move |check| {
+        let enabled = check.is_active();
+        quantity_entry_clone.set_sensitive(enabled);
+        quantity_type_entry_clone.set_sensitive(enabled);
+    });
+
     // Create clones for the closure
     let sender_clone = sender.clone();
     let ingredient_name_clone = ingredient_name.clone();
