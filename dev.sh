@@ -13,10 +13,13 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
+
 # Configuration
 PROJECT_ROOT="/home/mpr/code/cookbook"
 PANTRYMAN_DIR="$PROJECT_ROOT/pantryman"
 APP_PACKAGE="com.example.pantryman"
+# Use Windows adb.exe if available (for WSL/Arch)
+ADB="/mnt/c/Android/platform-tools/adb.exe"
 
 echo -e "${BLUE}🍳 Cookbook Development Helper${NC}"
 echo "=============================="
@@ -27,7 +30,7 @@ show_help() {
     echo "Commands:"
     echo "  gtk                 - Build and run the GTK cookbook application"
     echo "  gtk-compile         - Compile the GTK cookbook application (no run)"
-   echo "  gtk-test            - Run all tests for cookbook-gtk (unit, integration, UI)"
+    echo "  gtk-test            - Run all tests for cookbook-gtk (unit, integration, UI)"
     echo "  android-install     - Build and install Pantryman to connected device"
     echo "  android-run         - Build, install, and run Pantryman"
     echo "  android-logs        - Monitor Android app logs"
@@ -45,7 +48,7 @@ gtk_compile() {
 }
 
 check_device() {
-    local device=$(adb devices | grep -E "device$" | head -1 | cut -f1)
+    local device=$($ADB devices | tr -d '\r' | grep -E "device$" | head -1 | cut -f1)
     if [ -z "$device" ]; then
         echo -e "${RED}❌ No Android device connected${NC}"
         exit 1
@@ -62,7 +65,7 @@ run_gtk() {
 android_build() {
     echo -e "${CYAN}🔧 Building Pantryman Android app...${NC}"
     cd "$PANTRYMAN_DIR"
-    ./gradlew assembleDebug
+    gradle assembleDebug
     echo -e "${GREEN}✅ Build complete${NC}"
 }
 
@@ -71,14 +74,30 @@ android_install() {
     check_device
     echo -e "${CYAN}📱 Installing to device...${NC}"
     cd "$PANTRYMAN_DIR"
-    ./gradlew installDebug
-    echo -e "${GREEN}✅ Installation complete${NC}"
+    # Set Windows SDK and platform-tools for Gradle
+    export PATH="/mnt/c/Android/platform-tools:$PATH"
+    export ANDROID_SDK_ROOT="/mnt/c/Users/madsp/AppData/Local/Android/Sdk"
+    if ! ADB=$ADB gradle installDebug; then
+        echo -e "${YELLOW}⚠️  Gradle installDebug failed, trying manual APK install...${NC}"
+        APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+        if [ -f "$APK_PATH" ]; then
+            echo -e "${YELLOW}⚠️  Uninstalling existing app to avoid signature conflict...${NC}"
+            $ADB uninstall $APP_PACKAGE || true
+            $ADB install -r "$APK_PATH"
+            echo -e "${GREEN}✅ Manual APK install complete${NC}"
+        else
+            echo -e "${RED}❌ APK not found at $APK_PATH${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${GREEN}✅ Installation complete${NC}"
+    fi
 }
 
 android_run() {
     android_install
     echo -e "${CYAN}🚀 Starting app...${NC}"
-    adb shell am start -n "$APP_PACKAGE/.MainActivity"
+    $ADB shell am start -n "$APP_PACKAGE/.MainActivity"
     echo -e "${GREEN}✅ App started${NC}"
 }
 
@@ -87,7 +106,7 @@ android_logs() {
     echo -e "${CYAN}📊 Monitoring Android logs (Press Ctrl+C to stop)...${NC}"
     echo "Filtering for: MainActivity, CookbookEngine"
     echo ""
-    adb logcat | grep --line-buffered -E "(MainActivity|CookbookEngine)"
+    $ADB logcat | grep --line-buffered -E "(MainActivity|CookbookEngine)"
 }
 
 android_data() {
@@ -95,10 +114,10 @@ android_data() {
     echo -e "${CYAN}📁 Current Android app data directory:${NC}"
     echo ""
     echo "--- Ingredients ---"
-    adb shell run-as "$APP_PACKAGE" ls -la files/cookbook_data/ingredients/ 2>/dev/null || echo "No access or directory doesn't exist"
+    $ADB shell run-as "$APP_PACKAGE" ls -la files/cookbook_data/ingredients/ 2>/dev/null || echo "No access or directory doesn't exist"
     echo ""
     echo "--- Pantry ---"
-    adb shell run-as "$APP_PACKAGE" cat files/cookbook_data/pantry.yaml 2>/dev/null || echo "No access or file doesn't exist"
+    $ADB shell run-as "$APP_PACKAGE" cat files/cookbook_data/pantry.yaml 2>/dev/null || echo "No access or file doesn't exist"
     echo ""
 }
 
@@ -114,7 +133,7 @@ run_clean() {
     cd "$PROJECT_ROOT"
     cargo clean
     cd "$PANTRYMAN_DIR"
-    ./gradlew clean
+    gradle clean
     echo -e "${GREEN}✅ Clean complete${NC}"
 }
 
@@ -140,13 +159,13 @@ case "${1:-help}" in
         android_install
         ;;
     "android-run")
-       android_logs
+        android_run
         ;;
     "android-logs")
-       run_check
+        android_logs
         ;;
     "android-data")
-       run_clean
+        android_data
         ;;
     "check")
        run_test

@@ -7,7 +7,7 @@ Pantryman is a simple Android app for managing your pantry ingredients. This is 
 You can build this project using Gradle:
 
 ```
-./gradlew assembleDebug
+gradle assembleDebug
 ```
 
 Or open the project in Android Studio for full IDE support.
@@ -19,7 +19,7 @@ To run on your Pixel 7 or any Android device:
 2. Connect your device via USB.
 3. Run:
    ```
-   ./gradlew installDebug
+   gradle installDebug
    ```
 4. The app should appear as "Pantryman" and display "Hello world!" on launch.
 

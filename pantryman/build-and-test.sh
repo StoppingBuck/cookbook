@@ -29,7 +29,7 @@ cp target/aarch64-linux-android/release/libpantryman_bridge.so ../app/src/main/j
 cd ..
 
 echo "📱 Building Android APK..."
-./gradlew assembleDebug
+gradle assembleDebug
 
 echo "✅ Build completed successfully!"
 echo "📦 APK location: app/build/outputs/apk/debug/app-debug.apk"

@@ -56,8 +56,8 @@ This guide will help you set up your development environment for the Cookbook pr
    ```
 6. **Install Gradle (via SDKMAN!):**
    ```bash
-   # Ensure unzip is installed (required by SDKMAN!)
-   sudo dnf install -y unzip zip
+   # Ensure zip and unzip are installed (required by SDKMAN!) and also adb
+   sudo dnf install -y unzip zip android-tools
    # Install SDKMAN!
    curl -s "https://get.sdkman.io" | bash
    source "$HOME/.sdkman/bin/sdkman-init.sh"
@@ -78,6 +78,7 @@ This guide will help you set up your development environment for the Cookbook pr
      ```
      - Follow the setup wizard to install the SDK and NDK inside WSL.
      - If you are in WSL, make sure you have WSLg or another X Server running in order for Pantryman to render in Windows.
+   - create pantryman/local.properties with a line to where you put the SDK: sdk.dir=/home/yourusername/Android/Sdk
 
 ### Oracle Linux 9
 
