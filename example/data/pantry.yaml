@@ -32,3 +32,11 @@ items:
   quantity: 2.0
   quantity_type: kg
   last_updated: 2025-07-24
+- ingredient: salt
+  quantity: null
+  quantity_type: ''
+  last_updated: 2025-07-24
+- ingredient: pepper
+  quantity: null
+  quantity_type: ''
+  last_updated: 2025-07-24
