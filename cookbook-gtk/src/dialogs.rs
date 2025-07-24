@@ -28,15 +28,23 @@ pub fn show_about_dialog<Msg, C>(
     eprintln!("[AboutDialog DEBUG] icon_path: {:?}", icon_path);
     let logo_pixbuf = match gdk_pixbuf::Pixbuf::from_file(&icon_path) {
         Ok(pixbuf) => {
-            eprintln!("[AboutDialog DEBUG] Successfully loaded Pixbuf: {:?}", icon_path);
+            eprintln!(
+                "[AboutDialog DEBUG] Successfully loaded Pixbuf: {:?}",
+                icon_path
+            );
             Some(pixbuf)
-        },
+        }
         Err(err) => {
-            eprintln!("[AboutDialog DEBUG] Failed to load Pixbuf: {:?} | Error: {}", icon_path, err);
+            eprintln!(
+                "[AboutDialog DEBUG] Failed to load Pixbuf: {:?} | Error: {}",
+                icon_path, err
+            );
             None
         }
     };
-    let logo_image = logo_pixbuf.as_ref().map(|pixbuf| gtk::gdk::Texture::for_pixbuf(pixbuf));
+    let logo_image = logo_pixbuf
+        .as_ref()
+        .map(|pixbuf| gtk::gdk::Texture::for_pixbuf(pixbuf));
 
     let about_dialog = gtk::AboutDialog::builder()
         .program_name("Cookbook")

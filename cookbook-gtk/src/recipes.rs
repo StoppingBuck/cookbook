@@ -4,8 +4,8 @@ use gtk::prelude::*;
 use relm4::gtk;
 use relm4::ComponentSender;
 use relm4::RelmWidgetExt;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 use crate::types::AppModel;
 use crate::types::AppMsg;
@@ -190,7 +190,9 @@ where
             let recipe_title = recipe.title.clone();
             delete_button.connect_clicked(move |_| {
                 // Only send if C::Input == AppMsg
-                if let Some(appmsg_sender) = (&sender_clone as &dyn std::any::Any).downcast_ref::<ComponentSender<AppModel>>() {
+                if let Some(appmsg_sender) = (&sender_clone as &dyn std::any::Any)
+                    .downcast_ref::<ComponentSender<AppModel>>()
+                {
                     appmsg_sender.input(AppMsg::DeleteRecipe(recipe_title.clone()));
                 }
             });
@@ -477,47 +479,44 @@ pub fn show_edit_recipe_dialog(
     metadata_grid.attach(&title_label, 0, 0, 1, 1);
     metadata_grid.attach(&title_entry, 1, 0, 3, 1);
 
-    // Prep time field
+    // Prep time field (SpinButton)
     let prep_time_label = gtk::Label::new(Some("Prep Time (min):"));
     prep_time_label.set_halign(gtk::Align::Start);
     prep_time_label.set_valign(gtk::Align::Center);
-    let prep_time_entry = gtk::Entry::new();
+    let prep_time_spin = gtk::SpinButton::with_range(0.0, 999.0, 1.0);
+    prep_time_spin.set_width_chars(4);
+    prep_time_spin.set_valign(gtk::Align::Center);
     if let Some(prep_time) = recipe.prep_time {
-        prep_time_entry.set_text(&prep_time.to_string());
+        prep_time_spin.set_value(prep_time as f64);
     }
-    prep_time_entry.set_hexpand(false);
-    prep_time_entry.set_width_chars(8);
-    prep_time_entry.set_valign(gtk::Align::Center);
     metadata_grid.attach(&prep_time_label, 0, 1, 1, 1);
-    metadata_grid.attach(&prep_time_entry, 1, 1, 1, 1);
+    metadata_grid.attach(&prep_time_spin, 1, 1, 1, 1);
 
-    // Servings field (moved next to Prep Time)
+    // Servings field (SpinButton)
     let servings_label = gtk::Label::new(Some("Servings:"));
     servings_label.set_halign(gtk::Align::Start);
     servings_label.set_valign(gtk::Align::Center);
-    let servings_entry = gtk::Entry::new();
+    let servings_spin = gtk::SpinButton::with_range(0.0, 99.0, 1.0);
+    servings_spin.set_width_chars(3);
+    servings_spin.set_valign(gtk::Align::Center);
     if let Some(servings) = recipe.servings {
-        servings_entry.set_text(&servings.to_string());
+        servings_spin.set_value(servings as f64);
     }
-    servings_entry.set_hexpand(false);
-    servings_entry.set_width_chars(8);
-    servings_entry.set_valign(gtk::Align::Center);
     metadata_grid.attach(&servings_label, 2, 1, 1, 1);
-    metadata_grid.attach(&servings_entry, 3, 1, 1, 1);
+    metadata_grid.attach(&servings_spin, 3, 1, 1, 1);
 
-    // Downtime field (Cook Time)
+    // Downtime field (Cook Time, SpinButton)
     let downtime_label = gtk::Label::new(Some("Cook Time (min):"));
     downtime_label.set_halign(gtk::Align::Start);
     downtime_label.set_valign(gtk::Align::Center);
-    let downtime_entry = gtk::Entry::new();
+    let downtime_spin = gtk::SpinButton::with_range(0.0, 999.0, 1.0);
+    downtime_spin.set_width_chars(4);
+    downtime_spin.set_valign(gtk::Align::Center);
     if let Some(downtime) = recipe.downtime {
-        downtime_entry.set_text(&downtime.to_string());
+        downtime_spin.set_value(downtime as f64);
     }
-    downtime_entry.set_hexpand(false);
-    downtime_entry.set_width_chars(8);
-    downtime_entry.set_valign(gtk::Align::Center);
     metadata_grid.attach(&downtime_label, 0, 2, 1, 1);
-    metadata_grid.attach(&downtime_entry, 1, 2, 1, 1);
+    metadata_grid.attach(&downtime_spin, 1, 2, 1, 1);
 
     // Tags field
     let tags_label = gtk::Label::new(Some("Tags (comma-sep):"));
@@ -530,8 +529,54 @@ pub fn show_edit_recipe_dialog(
     metadata_grid.attach(&tags_label, 0, 3, 1, 1);
     metadata_grid.attach(&tags_entry, 1, 3, 3, 1);
 
+    // --- Image section (now in metadata grid, rightmost column, spanning rows 0-3) ---
+    let image_section = gtk::Box::new(gtk::Orientation::Vertical, TAG_SPACING);
+    image_section.set_valign(gtk::Align::Center);
+    image_section.set_margin_start(SECTION_SPACING);
+    // Smaller preview
+    let image_preview = if let Some(image_name) = &recipe.image {
+        if let Some(dm) = &data_manager {
+            let data_dir = dm.get_data_dir();
+            let img_path = data_dir.join("recipes/img").join(image_name);
+            if img_path.exists() {
+                let img = gtk::Image::from_file(img_path);
+                img.set_pixel_size(80);
+                img.set_size_request(80, 80);
+                img.set_visible(true);
+                img
+            } else {
+                let img = gtk::Image::new();
+                img.set_pixel_size(80);
+                img.set_size_request(80, 80);
+                img.set_visible(true);
+                img
+            }
+        } else {
+            let img = gtk::Image::new();
+            img.set_pixel_size(80);
+            img.set_size_request(80, 80);
+            img.set_visible(true);
+            img
+        }
+    } else {
+        let img = gtk::Image::new();
+        img.set_pixel_size(80);
+        img.set_size_request(80, 80);
+        img.set_visible(true);
+        img
+    };
+    image_section.append(&image_preview);
+    let image_buttons_box = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
+    let set_image_button = gtk::Button::with_label("Set Image");
+    let clear_image_button = gtk::Button::with_label("Clear Image");
+    image_buttons_box.append(&set_image_button);
+    image_buttons_box.append(&clear_image_button);
+    image_section.append(&image_buttons_box);
+    // Place image_section in metadata_grid (col 4, row 0, span 1x4)
+    metadata_grid.attach(&image_section, 4, 0, 1, 4);
+
     form_container.append(&metadata_grid);
-    // Removed individual appends for title_box, prep_time_box, etc.
+    // ...existing code...
 
     // No separator needed here, metadata_grid already has margin_bottom
 
@@ -548,7 +593,12 @@ pub fn show_edit_recipe_dialog(
     // Collect all ingredient names for completion (if data_manager is available)
     let ingredient_names: Vec<String> = data_manager
         .as_ref()
-        .map(|dm| dm.get_all_ingredients().into_iter().map(|i| i.name.clone()).collect())
+        .map(|dm| {
+            dm.get_all_ingredients()
+                .into_iter()
+                .map(|i| i.name.clone())
+                .collect()
+        })
         .unwrap_or_default();
 
     // Helper to create a ListStore for completion
@@ -594,13 +644,12 @@ pub fn show_edit_recipe_dialog(
         let name_entry = create_name_entry_with_completion(Some(&ingredient.ingredient));
         row.append(&name_entry);
 
-        let qty_entry = gtk::Entry::new();
-        if let Some(qty) = &ingredient.quantity {
-            qty_entry.set_text(&qty.to_string());
+        let qty_spin = gtk::SpinButton::with_range(0.0, 999.0, 1.0);
+        qty_spin.set_width_chars(4);
+        if let Some(qty) = ingredient.quantity {
+            qty_spin.set_value(qty);
         }
-        qty_entry.set_placeholder_text(Some("Qty"));
-        qty_entry.set_width_chars(6); // Reduced from 8
-        row.append(&qty_entry);
+        row.append(&qty_spin);
 
         let qty_type_entry = gtk::Entry::new();
         if let Some(qty_type) = &ingredient.quantity_type {
@@ -666,9 +715,9 @@ pub fn show_edit_recipe_dialog(
         row.append(&name_entry);
 
         let qty_entry = gtk::Entry::new();
-        qty_entry.set_placeholder_text(Some("Qty"));
-        qty_entry.set_width_chars(6);
-        row.append(&qty_entry);
+        let qty_spin = gtk::SpinButton::with_range(0.0, 999.0, 1.0);
+        qty_spin.set_width_chars(4);
+        row.append(&qty_spin);
 
         let qty_type_entry = gtk::Entry::new();
         qty_type_entry.set_placeholder_text(Some("Unit"));
@@ -737,18 +786,18 @@ pub fn show_edit_recipe_dialog(
     image_buttons_box.append(&set_image_button);
     image_buttons_box.append(&clear_image_button);
     image_section.append(&image_buttons_box);
-    
+
     let cleared_image: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
     let image_preview_clone = image_preview.clone();
-    let recipe_image_field_clone = recipe.image.clone(); 
+    let recipe_image_field_clone = recipe.image.clone();
     let cleared_image_clone = cleared_image.clone();
     // Clone selected_image_path for the clear_image_button closure *before* it's potentially moved.
-    let selected_image_path_for_clear = selected_image_path.clone(); 
+    let selected_image_path_for_clear = selected_image_path.clone();
 
     clear_image_button.connect_clicked(move |_| {
-        if recipe_image_field_clone.is_some() { 
-            image_preview_clone.set_from_pixbuf(None::<&gdk_pixbuf::Pixbuf>); 
-            *cleared_image_clone.borrow_mut() = recipe_image_field_clone.clone(); 
+        if recipe_image_field_clone.is_some() {
+            image_preview_clone.set_from_pixbuf(None::<&gdk_pixbuf::Pixbuf>);
+            *cleared_image_clone.borrow_mut() = recipe_image_field_clone.clone();
             *selected_image_path_for_clear.borrow_mut() = None; // Use the pre-cloned version
         }
     });
@@ -796,8 +845,10 @@ pub fn show_edit_recipe_dialog(
     instructions_text_view.set_wrap_mode(gtk::WrapMode::Word);
     instructions_text_view.set_hexpand(true);
     instructions_text_view.set_vexpand(true);
-    instructions_text_view.set_height_request(150); 
-    instructions_text_view.buffer().set_text(&recipe.instructions);
+    instructions_text_view.set_height_request(150);
+    instructions_text_view
+        .buffer()
+        .set_text(&recipe.instructions);
 
     // --- REVISED APPEND ORDER FOR form_container ---
     form_container.append(&metadata_grid);
@@ -815,8 +866,7 @@ pub fn show_edit_recipe_dialog(
     form_container.append(&add_ingredient_button);
     form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
 
-    form_container.append(&image_section);
-    form_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    // Image section is now in metadata grid, not here
 
     form_container.append(&instructions_label);
     form_container.append(&instructions_text_view);
@@ -827,7 +877,7 @@ pub fn show_edit_recipe_dialog(
     content_area.append(&scrolled_window);
 
     let recipe_image_field = recipe.image.clone(); // Used in the main save response closure
-    // Clones for closure
+                                                   // Clones for closure
     let sender_clone = sender.clone();
     let recipe_title_clone = recipe_title.clone();
     let data_manager_clone = data_manager.clone();
@@ -850,9 +900,9 @@ pub fn show_edit_recipe_dialog(
     dialog.connect_response(move |dialog, response| {
         if response == gtk::ResponseType::Accept {
             let new_title = title_entry.text().to_string();
-            let prep_time = prep_time_entry.text().to_string().parse::<u32>().ok();
-            let downtime = downtime_entry.text().to_string().parse::<u32>().ok();
-            let servings = servings_entry.text().to_string().parse::<u32>().ok();
+            let prep_time = Some(prep_time_spin.value() as u32);
+            let downtime = Some(downtime_spin.value() as u32);
+            let servings = Some(servings_spin.value() as u32);
             let tags = tags_entry
                 .text()
                 .split(',')
@@ -871,26 +921,19 @@ pub fn show_edit_recipe_dialog(
                     if let (Some(name_widget), Some(qty_widget), Some(type_widget)) =
                         (name_widget, qty_widget, type_widget)
                     {
-                        if let (Some(name_entry), Some(qty_entry), Some(type_entry)) = (
+                        if let (Some(name_entry), Some(qty_spin), Some(type_entry)) = (
                             name_widget.downcast_ref::<gtk::Entry>(),
-                            qty_widget.downcast_ref::<gtk::Entry>(),
+                            qty_widget.downcast_ref::<gtk::SpinButton>(),
                             type_widget.downcast_ref::<gtk::Entry>(),
                         ) {
                             let ingredient_name = name_entry.text().to_string();
                             if !ingredient_name.is_empty() {
-                                let qty = qty_entry.text().to_string();
+                                let qty_val = qty_spin.value();
+                                let qty = if qty_val == 0.0 { None } else { Some(qty_val) };
                                 let qty_type = type_entry.text().to_string();
-                                let parsed_qty = if qty.is_empty() {
-                                    None
-                                } else {
-                                    match qty.parse::<f64>() {
-                                        Ok(value) => Some(value),
-                                        Err(_) => None,
-                                    }
-                                };
                                 ingredients.push(cookbook_engine::RecipeIngredient {
                                     ingredient: ingredient_name,
-                                    quantity: parsed_qty,
+                                    quantity: qty,
                                     quantity_type: if qty_type.is_empty() {
                                         None
                                     } else {
@@ -906,7 +949,11 @@ pub fn show_edit_recipe_dialog(
 
             let instructions = instructions_text_view
                 .buffer()
-                .text(&instructions_text_view.buffer().start_iter(), &instructions_text_view.buffer().end_iter(), false)
+                .text(
+                    &instructions_text_view.buffer().start_iter(),
+                    &instructions_text_view.buffer().end_iter(),
+                    false,
+                )
                 .to_string();
 
             // Handle image copy if a new image was selected
@@ -915,7 +962,10 @@ pub fn show_edit_recipe_dialog(
                 if let Some(dm) = &data_manager_clone {
                     let data_dir = dm.get_data_dir();
                     let img_dir = data_dir.join("recipes/img");
-                    let ext = selected_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                    let ext = selected_path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("");
                     let safe_title = title_entry.text().replace(' ', "_");
                     let new_filename = format!("{}.{}", safe_title, ext);
                     let dest_path = img_dir.join(&new_filename);
@@ -1084,7 +1134,10 @@ pub fn build_recipes_tab(
     recipe_list_pane.connect_row_selected(move |_list, row_opt| {
         if let Some(row) = row_opt {
             if let Some(box_layout) = row.child().and_then(|w| w.downcast::<gtk::Box>().ok()) {
-                if let Some(label) = box_layout.first_child().and_then(|w| w.downcast::<gtk::Label>().ok()) {
+                if let Some(label) = box_layout
+                    .first_child()
+                    .and_then(|w| w.downcast::<gtk::Label>().ok())
+                {
                     let recipe_title = label.text().to_string();
                     // Selecting a recipe in the Recipe List Pane updates the Recipe Details Pane
                     // Prevent feedback loop: only send if model's selected_recipe is different

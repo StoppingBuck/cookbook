@@ -1,9 +1,9 @@
 use crate::user_settings::UserSettings;
+use cookbook_engine::DataManager;
 use relm4::gtk;
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
-use cookbook_engine::DataManager;
 
 /// Represents the different tabs in the application UI
 #[derive(Debug, Clone, PartialEq)]
@@ -31,12 +31,12 @@ pub enum AppMsg {
     TogglePantryCategory(String, bool),
     UpdateRecipe(String, cookbook_engine::Recipe), // (original_title, new_recipe)
     ClearError,
-    AddIngredient, // Triggers the add ingredient dialog
-    DeleteIngredient(String), // Deletes an ingredient by slug
-    ReloadPantry, // Explicitly reload pantry data and UI
-    AddRecipe, // Triggers the add recipe dialog
-    DeleteRecipe(String), // Deletes a recipe by title
-    ReloadRecipes, // Explicitly reload recipes data and UI
+    AddIngredient,                         // Triggers the add ingredient dialog
+    DeleteIngredient(String),              // Deletes an ingredient by slug
+    ReloadPantry,                          // Explicitly reload pantry data and UI
+    AddRecipe,                             // Triggers the add recipe dialog
+    DeleteRecipe(String),                  // Deletes a recipe by title
+    ReloadRecipes,                         // Explicitly reload recipes data and UI
     CreateRecipe(cookbook_engine::Recipe), // Add a new recipe
     RefreshCategoryPopover, // Triggers a manual refresh of the category filter popover
 }

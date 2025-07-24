@@ -1,18 +1,23 @@
 use crate::i18n::tr;
+use crate::ui_constants::*;
 use gtk::prelude::*;
 use relm4::RelmWidgetExt;
-use crate::ui_constants::*;
 
 pub fn build_settings_tab(
     current_language: &str,
     on_language_change: impl Fn(String) + 'static,
     current_data_dir: &str,
     on_data_dir_change: impl Fn(String) + 'static,
+    current_theme: &str,
+    on_theme_change: impl Fn(String) + 'static,
 ) -> gtk::Box {
     let settings_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
 
     let settings_title = gtk::Label::new(Some(&tr("Settings")));
-    settings_title.set_markup(&format!("<span size='x-large' weight='bold'>{}</span>", tr("Settings")));
+    settings_title.set_markup(&format!(
+        "<span size='x-large' weight='bold'>{}</span>",
+        tr("Settings")
+    ));
     settings_title.set_halign(gtk::Align::Start);
     settings_title.set_margin_all(DEFAULT_MARGIN);
 
@@ -38,8 +43,31 @@ pub fn build_settings_tab(
     lang_box.append(&lang_label);
     lang_box.append(&lang_combo);
 
+    // Theme selector
+    let theme_label = gtk::Label::new(Some(&tr("Theme:")));
+    theme_label.set_halign(gtk::Align::Start);
+    theme_label.set_margin_start(DEFAULT_MARGIN);
+
+    let theme_combo = gtk::ComboBoxText::new();
+    theme_combo.append(Some("System"), "System");
+    theme_combo.append(Some("Light"), "Light");
+    theme_combo.append(Some("Dark"), "Dark");
+    theme_combo.set_active_id(Some(current_theme));
+    let on_theme_change = std::rc::Rc::new(on_theme_change);
+    let on_theme_change_clone = on_theme_change.clone();
+    theme_combo.connect_changed(move |combo| {
+        if let Some(theme) = combo.active_id() {
+            on_theme_change_clone(theme.to_string());
+        }
+    });
+
+    let theme_box = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
+    theme_box.append(&theme_label);
+    theme_box.append(&theme_combo);
+
     settings_container.append(&settings_title);
     settings_container.append(&lang_box);
+    settings_container.append(&theme_box);
 
     // Data directory selector
     let data_dir_label = gtk::Label::new(Some(&tr("Data directory:")));
@@ -60,7 +88,10 @@ pub fn build_settings_tab(
             Some(&tr("Select Data Directory")),
             Some(&gtk::Window::default()),
             gtk::FileChooserAction::SelectFolder,
-            &[(&tr("Cancel"), gtk::ResponseType::Cancel), (&tr("Select"), gtk::ResponseType::Accept)],
+            &[
+                (&tr("Cancel"), gtk::ResponseType::Cancel),
+                (&tr("Select"), gtk::ResponseType::Accept),
+            ],
         );
         let data_dir_value_clone2 = data_dir_value_clone.clone();
         let on_data_dir_change_clone2 = on_data_dir_change_clone.clone();

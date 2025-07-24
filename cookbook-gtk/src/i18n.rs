@@ -1,8 +1,8 @@
 //! i18n.rs - Internationalization utilities for Cookbook GTK
 use gettextrs::{gettext, ngettext};
 use once_cell::sync::Lazy;
-use std::sync::Mutex;
 use std::env;
+use std::sync::Mutex;
 
 static LOCALE: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new("en".to_string()));
 

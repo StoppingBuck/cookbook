@@ -32,3 +32,7 @@ items:
   quantity: 5.0
   quantity_type: ''
   last_updated: 2025-07-23
+- ingredient: butter
+  quantity: 1.0
+  quantity_type: ''
+  last_updated: 2025-07-24

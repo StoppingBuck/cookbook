@@ -3,6 +3,7 @@
 // The application is built using the relm4 library, which provides a way to create GTK applications in Rust
 
 mod dialogs;
+mod i18n;
 mod kb;
 mod pantry;
 mod recipes;
@@ -11,9 +12,8 @@ mod sidebar;
 mod tabs;
 mod types;
 mod ui_constants;
-mod utils;
-mod i18n;
 mod user_settings;
+mod utils;
 
 // First, we import the necessary libraries and modules
 // The gtk::prelude::* import brings in a collection of traits from the GTK library, which are essential for working with GTK widgets and their associated methods. This simplifies the usage of GTK by allowing you to call methods directly on widgets without needing to explicitly import each trait.
@@ -26,6 +26,7 @@ mod user_settings;
 // RelmApp is the application runner provided by relm4, which initializes and runs the main event loop of the GUI application.
 // RelmWidgetExt provides extension traits for widgets, adding convenience methods that streamline widget manipulation and interaction.
 // Together, these imports set up the foundation for building a GTK-based GUI application that leverages the cookbook_engine library for its core functionality and uses relm4 to manage the application's reactive components and event-driven architecture.
+use crate::user_settings::UserSettings; // Import UserSettings to resolve undeclared type error // Import extension traits for widgets
 use cookbook_engine::DataManager; // Import the DataManager from the cookbook_engine module
 use gtk::prelude::*; // Import GTK traits for easier usage
 use relm4::gtk; // Import GTK bindings from relm4
@@ -34,14 +35,12 @@ use relm4::ComponentParts; // Import to create component parts with model and wi
 use relm4::ComponentSender; // Import to send messages between components
 use relm4::RelmApp; // Import application runner for relm4
 use relm4::SimpleComponent;
-use ui_constants::*; // Import trait for implementing UI components
+use std::cell::Cell; // Import Cell for interior mutability
 use std::env; // Import env for accessing environment variables
 use std::path::PathBuf; // Import PathBuf for handling file paths
 use std::rc::Rc; // Import Rc for reference counting
-use std::cell::Cell; // Import Cell for interior mutability
-use crate::user_settings::UserSettings; // Import UserSettings to resolve undeclared type error // Import extension traits for widgets
 use types::{AppModel, AppMsg, AppWidgets, Tab};
-
+use ui_constants::*; // Import trait for implementing UI components
 
 // Implement the SimpleComponent trait for the AppModel
 // This trait defines how the component is initialized, updated, and rendered
@@ -164,7 +163,8 @@ impl SimpleComponent for AppModel {
         ) = pantry::build_pantry_tab(&model, Some(sender.clone()));
 
         // Knowledge base tab content
-        let (kb_container, kb_list_box, kb_details, kb_label) = kb::build_kb_tab(&model, Some(sender.clone()));
+        let (kb_container, kb_list_box, kb_details, kb_label) =
+            kb::build_kb_tab(&model, Some(sender.clone()));
 
         // Settings tab content
         let settings_container = settings::build_settings_tab(
@@ -173,7 +173,6 @@ impl SimpleComponent for AppModel {
                 let user_settings_rc = model.user_settings.clone();
                 let sender = sender.clone();
                 move |lang: String| {
-                    // Save language to user settings and reload translations
                     let mut user_settings = user_settings_rc.borrow_mut();
                     user_settings.language = lang.clone();
                     let config_path = dirs::config_dir()
@@ -181,9 +180,10 @@ impl SimpleComponent for AppModel {
                         .join("cookbook-gtk/user_settings.toml");
                     user_settings.save(&config_path);
                     crate::i18n::set_language(&lang);
-                    // Debug output for UI refresh
-                    println!("[DEBUG] UI refresh triggered after language change to: {}", lang);
-                    // Trigger a full UI refresh by sending a message
+                    println!(
+                        "[DEBUG] UI refresh triggered after language change to: {}",
+                        lang
+                    );
                     sender.input(AppMsg::ReloadPantry);
                     sender.input(AppMsg::ReloadRecipes);
                     sender.input(AppMsg::SwitchTab(Tab::Settings));
@@ -194,18 +194,38 @@ impl SimpleComponent for AppModel {
                 let user_settings_rc = model.user_settings.clone();
                 let sender = sender.clone();
                 move |new_data_dir: String| {
-                    // Save new data_dir to user settings
                     let mut user_settings = user_settings_rc.borrow_mut();
                     user_settings.data_dir = Some(new_data_dir.clone());
                     let config_path = dirs::config_dir()
                         .unwrap_or_else(|| std::path::PathBuf::from("."))
                         .join("cookbook-gtk/user_settings.toml");
                     user_settings.save(&config_path);
-                    // Validate and create required structure
                     crate::utils::validate_and_create_data_dir(&new_data_dir);
-                    // Reload DataManager and update model
                     sender.input(AppMsg::ReloadPantry);
                     sender.input(AppMsg::ReloadRecipes);
+                    sender.input(AppMsg::SwitchTab(Tab::Settings));
+                }
+            },
+            match &model.user_settings.borrow().theme {
+                crate::user_settings::Theme::System => "System",
+                crate::user_settings::Theme::Light => "Light",
+                crate::user_settings::Theme::Dark => "Dark",
+            },
+            {
+                let user_settings_rc = model.user_settings.clone();
+                let sender = sender.clone();
+                move |theme: String| {
+                    let mut user_settings = user_settings_rc.borrow_mut();
+                    user_settings.theme = match theme.as_str() {
+                        "Light" => crate::user_settings::Theme::Light,
+                        "Dark" => crate::user_settings::Theme::Dark,
+                        _ => crate::user_settings::Theme::System,
+                    };
+                    let config_path = dirs::config_dir()
+                        .unwrap_or_else(|| std::path::PathBuf::from("."))
+                        .join("cookbook-gtk/user_settings.toml");
+                    user_settings.save(&config_path);
+                    println!("[DEBUG] Theme changed to: {}", theme);
                     sender.input(AppMsg::SwitchTab(Tab::Settings));
                 }
             },
@@ -414,10 +434,7 @@ impl SimpleComponent for AppModel {
             }
             // Message: User clicks the Add Recipe button
             AppMsg::AddRecipe => {
-                recipes::show_add_recipe_dialog(
-                    self.data_manager.clone(),
-                    sender.clone(),
-                );
+                recipes::show_add_recipe_dialog(self.data_manager.clone(), sender.clone());
             }
             // Message: User clicks the Delete Recipe button
             AppMsg::DeleteRecipe(recipe_title) => {
@@ -541,11 +558,13 @@ impl SimpleComponent for AppModel {
         // Update sidebar button styles based on the current tab
         sidebar::update_sidebar_buttons(&self.current_tab, &widgets.sidebar_buttons);
 
-
         // Highlight the selected recipe in the Recipes list
         if self.current_tab == Tab::Recipes {
             if let Some(recipe_name) = self.selected_recipe.as_ref() {
-                println!("DEBUG: update_view - Recipe selection logic entered. selected_recipe={:?}", recipe_name);
+                println!(
+                    "DEBUG: update_view - Recipe selection logic entered. selected_recipe={:?}",
+                    recipe_name
+                );
                 let mut found = false;
                 let mut i = 0;
                 while let Some(row) = widgets.recipes_list_box.row_at_index(i) {
@@ -572,10 +591,18 @@ impl SimpleComponent for AppModel {
                     } else {
                         String::new()
                     };
-                    println!("DEBUG: update_view - Recipe row label_text={:?}", label_text);
+                    println!(
+                        "DEBUG: update_view - Recipe row label_text={:?}",
+                        label_text
+                    );
                     if label_text == *recipe_name {
-                        println!("DEBUG: update_view - Found matching recipe row at index {}", i-1);
-                        let already_selected = widgets.recipes_list_box.selected_row()
+                        println!(
+                            "DEBUG: update_view - Found matching recipe row at index {}",
+                            i - 1
+                        );
+                        let already_selected = widgets
+                            .recipes_list_box
+                            .selected_row()
                             .map(|selected| selected == row)
                             .unwrap_or(false);
                         if !already_selected {
@@ -595,7 +622,9 @@ impl SimpleComponent for AppModel {
                 }
             } else {
                 println!("DEBUG: update_view - No recipe selected, clearing selection");
-                widgets.recipes_list_box.select_row(None::<&gtk::ListBoxRow>);
+                widgets
+                    .recipes_list_box
+                    .select_row(None::<&gtk::ListBoxRow>);
             }
         }
 
@@ -604,7 +633,9 @@ impl SimpleComponent for AppModel {
             if let Some(selected_slug) = self.selected_ingredient.as_ref() {
                 println!("DEBUG: update_view - Ingredient selection logic entered. selected_ingredient(slug)={:?}", selected_slug);
                 if let Some(row) = widgets.pantry_row_map.get(selected_slug) {
-                    let already_selected = widgets.pantry_list.selected_row()
+                    let already_selected = widgets
+                        .pantry_list
+                        .selected_row()
                         .map(|selected| selected == *row)
                         .unwrap_or(false);
                     if !already_selected {
@@ -675,11 +706,7 @@ impl SimpleComponent for AppModel {
         if self.current_tab == Tab::KnowledgeBase {
             // Select the correct KB entry in the list box
             if let Some(slug) = &self.selected_kb_entry {
-                kb::update_kb_details::<AppModel>(
-                    &widgets.kb_details,
-                    &self.data_manager,
-                    slug,
-                );
+                kb::update_kb_details::<AppModel>(&widgets.kb_details, &self.data_manager, slug);
             } else {
                 kb::show_kb_details_placeholder(&widgets.kb_details);
             }

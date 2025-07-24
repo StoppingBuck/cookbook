@@ -1,5 +1,5 @@
-use relm4::gtk;
 use crate::types::Tab;
+use relm4::gtk;
 
 /// Updates the main stack to show the currently selected tab
 pub fn update_tab_view(current_tab: &Tab, main_stack: &gtk::Stack) {

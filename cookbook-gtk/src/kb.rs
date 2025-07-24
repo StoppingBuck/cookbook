@@ -1,11 +1,11 @@
 use cookbook_engine::DataManager;
 use gtk::prelude::*;
+use regex::Regex;
 use relm4::gtk;
+use relm4::gtk::glib;
 use relm4::ComponentSender;
 use relm4::RelmWidgetExt;
 use std::rc::Rc;
-use regex::Regex;
-use relm4::gtk::glib;
 
 use crate::types::AppModel;
 use crate::types::AppMsg;
@@ -23,7 +23,6 @@ pub fn update_kb_list<C>(
 {
     // Clear the KB list
     utils::clear_list_box(&kb_list_box);
-
 
     if let Some(ref dm) = data_manager {
         let entries = dm.get_all_kb_entries();
@@ -80,17 +79,17 @@ fn markdown_to_pango(md: &str) -> String {
     let bold_re = Regex::new(r"\*\*(.+?)\*\*");
     let bold_re = match bold_re {
         Ok(re) => re,
-        Err(_) => return String::from("[Markdown bold regex error]")
+        Err(_) => return String::from("[Markdown bold regex error]"),
     };
     let italic_re = Regex::new(r"\*(.+?)\*");
     let italic_re = match italic_re {
         Ok(re) => re,
-        Err(_) => return String::from("[Markdown italic regex error]")
+        Err(_) => return String::from("[Markdown italic regex error]"),
     };
     let link_re = Regex::new(r"\[(.+?)\]\((.+?)\)");
     let link_re = match link_re {
         Ok(re) => re,
-        Err(_) => return String::from("[Markdown link regex error]")
+        Err(_) => return String::from("[Markdown link regex error]"),
     };
     let mut in_table = false;
     for line in md.lines() {
@@ -98,8 +97,8 @@ fn markdown_to_pango(md: &str) -> String {
         // Debug: print each line and what the parser thinks it is
         //println!("[KB DEBUG] markdown_to_pango: line='{}'", trimmed);
         // Detect markdown table lines (start with | or contain only dashes and pipes)
-        let is_table_line = trimmed.starts_with('|') ||
-            (trimmed.chars().all(|c| c == '|' || c == '-' || c == ' '));
+        let is_table_line =
+            trimmed.starts_with('|') || (trimmed.chars().all(|c| c == '|' || c == '-' || c == ' '));
         if is_table_line {
             //println!("[KB DEBUG] Detected table line: {}", trimmed);
             if !in_table {
@@ -124,11 +123,17 @@ fn markdown_to_pango(md: &str) -> String {
         } else if trimmed.starts_with("## ") {
             let safe = glib::markup_escape_text(&trimmed[3..]);
             //println!("[KB DEBUG] Detected h2: {}", &safe);
-            pango_line.push_str(&format!("<span size='x-large' weight='bold'>{}</span>", safe));
+            pango_line.push_str(&format!(
+                "<span size='x-large' weight='bold'>{}</span>",
+                safe
+            ));
         } else if trimmed.starts_with("# ") {
             let safe = glib::markup_escape_text(&trimmed[2..]);
             //println!("[KB DEBUG] Detected h1: {}", &safe);
-            pango_line.push_str(&format!("<span size='xx-large' weight='bold'>{}</span>", safe));
+            pango_line.push_str(&format!(
+                "<span size='xx-large' weight='bold'>{}</span>",
+                safe
+            ));
         } else if trimmed.starts_with("* ") || trimmed.starts_with("- ") {
             let safe = glib::markup_escape_text(&trimmed[2..]);
             //println!("[KB DEBUG] Detected list item: {}", &safe);
@@ -150,7 +155,9 @@ fn markdown_to_pango(md: &str) -> String {
         });
         let pango_line = italic_re.replace_all(&pango_line, |caps: &regex::Captures| {
             // Avoid matching inside bold
-            if caps[1].contains("<b>") { caps[0].to_string() } else {
+            if caps[1].contains("<b>") {
+                caps[0].to_string()
+            } else {
                 let text = glib::markup_escape_text(&caps[1]);
                 format!("<i>{}</i>", text)
             }
@@ -164,10 +171,7 @@ fn markdown_to_pango(md: &str) -> String {
     out.trim().to_string()
 }
 
-pub fn build_kb_detail_view(
-    data_manager: &Rc<DataManager>,
-    kb_slug: &str,
-) -> gtk::ScrolledWindow {
+pub fn build_kb_detail_view(data_manager: &Rc<DataManager>, kb_slug: &str) -> gtk::ScrolledWindow {
     let kb_details_scroll = gtk::ScrolledWindow::new();
     kb_details_scroll.set_hexpand(true);
     kb_details_scroll.set_vexpand(true); // Allow vertical expansion
@@ -199,7 +203,7 @@ pub fn build_kb_detail_view(
                             image.set_hexpand(true);
                             // Don't expand vertically, use fixed sizing instead
                             image.set_vexpand(false);
-                            
+
                             // Use GtkAspectFrame to make the image scale with the window, preserving aspect ratio
                             let aspect_frame = gtk::AspectFrame::new(0.5, 0.0, aspect, false);
                             aspect_frame.set_hexpand(true);
@@ -207,10 +211,10 @@ pub fn build_kb_detail_view(
                             aspect_frame.set_vexpand(false);
                             aspect_frame.set_halign(gtk::Align::Fill);
                             aspect_frame.set_valign(gtk::Align::Start); // Align to top
-                            
+
                             // Set minimum height to ensure image is visible
                             aspect_frame.set_size_request(-1, 300); // width: -1 means "natural width", height: 300px minimum
-                            
+
                             aspect_frame.set_child(Some(&image));
                             aspect_frame.set_margin_bottom(HEADER_MARGIN);
                             details_container.append(&aspect_frame);
@@ -349,7 +353,6 @@ pub fn update_kb_details<C>(
 pub fn show_kb_details_placeholder(kb_details: &gtk::Box) {
     // Clear previous content
     utils::clear_box(&kb_details);
-
 
     let select_label = gtk::Label::new(Some("Select an item to view details"));
     select_label.set_halign(gtk::Align::Center);

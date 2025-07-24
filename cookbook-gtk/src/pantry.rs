@@ -7,8 +7,8 @@ use cookbook_engine::DataManager;
 use gtk::prelude::*;
 use relm4::gtk;
 use relm4::ComponentSender;
-use relm4::RelmWidgetExt;
 use relm4::RelmIterChildrenExt;
+use relm4::RelmWidgetExt;
 use std::rc::Rc;
 
 /// Rebuilds the Pantry List Pane with filtered ingredients based on search text and category filters
@@ -43,19 +43,33 @@ pub fn rebuild_pantry_list<C>(
         }
     };
 
-    let filtered_ingredients = dm.filter_ingredients(search_text, selected_categories, show_in_stock_only, lang);
-    let mut pantry_items_by_category: std::collections::HashMap<String, Vec<(String, String, Option<String>, Option<String>, bool)>> = std::collections::HashMap::new();
+    let filtered_ingredients =
+        dm.filter_ingredients(search_text, selected_categories, show_in_stock_only, lang);
+    let mut pantry_items_by_category: std::collections::HashMap<
+        String,
+        Vec<(String, String, Option<String>, Option<String>, bool)>,
+    > = std::collections::HashMap::new();
 
     for ingredient in &filtered_ingredients {
         let is_in_stock = dm.is_in_pantry(&ingredient.name);
-        let quantity = dm.get_pantry_item(&ingredient.name).and_then(|item| item.quantity);
-        let quantity_type = dm.get_pantry_item(&ingredient.name).map(|item| item.quantity_type.clone());
+        let quantity = dm
+            .get_pantry_item(&ingredient.name)
+            .and_then(|item| item.quantity);
+        let quantity_type = dm
+            .get_pantry_item(&ingredient.name)
+            .map(|item| item.quantity_type.clone());
         let display_name = DataManager::ingredient_display_name(ingredient, lang, quantity);
         let slug = ingredient.slug.clone();
         pantry_items_by_category
             .entry(ingredient.category.clone())
             .or_default()
-            .push((display_name, slug, quantity.map(|q| q.to_string()), quantity_type, is_in_stock));
+            .push((
+                display_name,
+                slug,
+                quantity.map(|q| q.to_string()),
+                quantity_type,
+                is_in_stock,
+            ));
     }
 
     let mut sorted_categories: Vec<String> = pantry_items_by_category.keys().cloned().collect();
@@ -131,7 +145,8 @@ pub fn rebuild_pantry_list<C>(
                             }
                             // Use build_ingredient_detail_view with dummy sender
                             use relm4::ComponentSender;
-                            let dummy_sender: &ComponentSender<AppModel> = unsafe { std::mem::zeroed() };
+                            let dummy_sender: &ComponentSender<AppModel> =
+                                unsafe { std::mem::zeroed() };
                             let detail_view = crate::pantry::build_ingredient_detail_view(
                                 &dm_rc,
                                 &slug_clone,
@@ -193,8 +208,7 @@ where
         .and_then(|_| Some("en")) // fallback if needed
         .unwrap_or("en");
     // Try to resolve by slug or translation
-    let ingredient = data_manager
-        .find_ingredient_by_name_or_translation(ingredient_id, lang);
+    let ingredient = data_manager.find_ingredient_by_name_or_translation(ingredient_id, lang);
 
     if let Some(ingredient) = ingredient {
         // Title with ingredient name and edit button in a horizontal box
@@ -682,22 +696,23 @@ pub fn show_edit_ingredient_dialog(
 pub fn build_pantry_tab(
     model: &AppModel,
     sender: Option<ComponentSender<AppModel>>,
-)
-    -> (
-        gtk::Box,                       // pantry_container
-        gtk::ListBox,                   // pantry_list_container
-        gtk::Box,                       // pantry_details_box
-        gtk::Switch,                    // stock_filter_switch
-        gtk::Label,                     // pantry_title
-        Option<Box<dyn Fn(&AppModel)>>, // refresh_categories closure
-    )
-{
+) -> (
+    gtk::Box,                       // pantry_container
+    gtk::ListBox,                   // pantry_list_container
+    gtk::Box,                       // pantry_details_box
+    gtk::Switch,                    // stock_filter_switch
+    gtk::Label,                     // pantry_title
+    Option<Box<dyn Fn(&AppModel)>>, // refresh_categories closure
+) {
     // Main container for the Pantry tab
     let pantry_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
 
     // Title
     let pantry_title = gtk::Label::new(Some(&tr("Pantry")));
-    pantry_title.set_markup(&format!("<span size='x-large' weight='bold'>{}</span>", tr("Pantry")));
+    pantry_title.set_markup(&format!(
+        "<span size='x-large' weight='bold'>{}</span>",
+        tr("Pantry")
+    ));
     pantry_title.set_halign(gtk::Align::Start);
     pantry_title.set_margin_all(DEFAULT_MARGIN);
 
@@ -901,7 +916,10 @@ pub fn build_pantry_tab(
 
     // Title
     let pantry_title = gtk::Label::new(Some(&tr("Pantry")));
-    pantry_title.set_markup(&format!("<span size='x-large' weight='bold'>{}</span>", tr("Pantry")));
+    pantry_title.set_markup(&format!(
+        "<span size='x-large' weight='bold'>{}</span>",
+        tr("Pantry")
+    ));
     pantry_title.set_halign(gtk::Align::Start);
     pantry_title.set_margin_all(DEFAULT_MARGIN);
 
@@ -1130,7 +1148,9 @@ pub fn build_pantry_tab(
                         *selected_ingredient_ref.borrow_mut() = Some(slug_ref.clone());
                         println!("DEBUG: [ListBox] Sent SelectIngredient message");
                     } else {
-                        println!("DEBUG: [ListBox] Ingredient already selected, not sending message");
+                        println!(
+                            "DEBUG: [ListBox] Ingredient already selected, not sending message"
+                        );
                     }
                 }
             } else {

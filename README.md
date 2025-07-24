@@ -117,7 +117,9 @@ source $HOME/.cargo/env
 3. **Install GTK4 development libraries:**
    ```bash
    sudo pacman -S gtk4 gdk-pixbuf2 glib2 xz
-   sudo pacman -S gtk3 (for UI testing framework)
+   sudo pacman -S gtk3 (for UI testing framework... maybe?)
+   sudo pacman -S noto-fonts-emoji (or another font that supports emojis)
+   sudo pacman -S gnome-themes-extra (for dark theme support)
    ```
 4. **Install Java (JDK 21+):**
    ```bash
