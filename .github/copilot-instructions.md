@@ -26,6 +26,12 @@
   - If there are any compilation errors, address all errors before running `./dev.sh gtk-compile` again.
   - Only stop once there are no more compilation errors.
   - This loop is the default workflow for cookbook-gtk development.
+ **Pantryman compile-check loop:**
+ - Similar to the Cookbook-GTK compile-check loop, but for the Android app:
+ - When editing any code in `pantryman`, always run `./dev.sh android` before reporting back to the user.
+  - If there are any compilation errors, address all errors before running `./dev.sh android` again.
+  - Only stop once there are no more compilation errors.
+  - This loop is the default workflow for pantryman development.
 
 ## Integration Points
 - **FFI boundary:** Pantryman Android app uses JNI to call Rust code in `cookbook-engine` (see `pantryman/rust-bridge`).

@@ -117,19 +117,17 @@ impl Ingredient {
     
     // Reads an ingredient from a YAML file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, CookbookError> {
-        let content = fs::read_to_string(&path).map_err(|e| CookbookError::ReadError(e.to_string()))?; // Read the file content
-        serde_yaml::from_str(&content).map_err(|e| CookbookError::ParseError(e.to_string()))                   // Parse the YAML content
+        let content = std::fs::read_to_string(&path).map_err(|e| CookbookError::ReadError(e.to_string()))?;
+        serde_yaml::from_str(&content).map_err(|e| CookbookError::ParseError(e.to_string()))
     }
-    
     // Writes an ingredient to a YAML file
     pub fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), CookbookError> {
         let yaml = serde_yaml::to_string(self)
-            .map_err(|e| CookbookError::ParseError(format!("Failed to serialize ingredient: {}", e)))?;    // Serialize the ingredient to YAML
-        
-        fs::write(&path, yaml)
-            .map_err(|e| CookbookError::WriteError(format!("Failed to write ingredient file: {}", e)))?;   // Write the YAML content to the file
+            .map_err(|e| CookbookError::ParseError(format!("Failed to serialize ingredient: {}", e)))?;
+        std::fs::write(&path, yaml)
+            .map_err(|e| CookbookError::WriteError(format!("Failed to write ingredient file: {}", e)))?;
         println!("Successfully wrote to {}!", path.as_ref().display());
-        Ok(()) // Return Ok if successful
+        Ok(())
     }
 }
 
@@ -137,19 +135,17 @@ impl Ingredient {
 impl Pantry {
     // Reads a pantry from a YAML file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, CookbookError> {
-        let content = fs::read_to_string(&path).map_err(|e| CookbookError::ReadError(e.to_string()))?; // Read the file content
-        serde_yaml::from_str(&content).map_err(|e| CookbookError::ParseError(e.to_string()))                   // Parse the YAML content
+        let content = std::fs::read_to_string(&path).map_err(|e| CookbookError::ReadError(e.to_string()))?;
+        serde_yaml::from_str(&content).map_err(|e| CookbookError::ParseError(e.to_string()))
     }
-    
     // Writes a pantry to a YAML file
     pub fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), CookbookError> {
         let yaml = serde_yaml::to_string(self)
-            .map_err(|e| CookbookError::ParseError(format!("Failed to serialize pantry: {}", e)))?; // Serialize the pantry to YAML
-        
-        fs::write(&path, yaml)
-            .map_err(|e| CookbookError::WriteError(format!("Failed to write pantry file: {}", e)))?; // Write the YAML content to the file
+            .map_err(|e| CookbookError::ParseError(format!("Failed to serialize pantry: {}", e)))?;
+        std::fs::write(&path, yaml)
+            .map_err(|e| CookbookError::WriteError(format!("Failed to write pantry file: {}", e)))?;
         println!("Successfully wrote to {}!", path.as_ref().display());
-        Ok(()) // Return Ok if successful
+        Ok(())
     }
 }
 

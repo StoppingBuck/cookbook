@@ -1,5 +1,0 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.Pantryman" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
-        <!-- Customize your night theme here. -->
-    </style>
-</resources>
