@@ -86,6 +86,5 @@ Open issues, known bugs, and refactoring ideas across the project.
 
 - **`pantryman/README.md` is outdated**: Still describes the project as a "Hello World" app.
 - **`cookbook-engine/README.md` is empty**: Needs API overview and data-format reference.
-- **`PANTRYMAN_INGREDIENT_UPDATE_RESOLUTION.md`**: Historical artefact; can be deleted once the fix is confirmed stable.
 - **No `CONTRIBUTING.md`**: No guide for external contributors (branching strategy, PR checklist, code style).
 - **No architecture diagram**: A simple diagram showing `cookbook-engine` ← GTK / Android ← JNI bridge would help new contributors orient quickly.
