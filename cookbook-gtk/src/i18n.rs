@@ -19,7 +19,7 @@ pub fn set_language(lang: &str) {
         }
         Err(_) => {
             // Handle poisoned lock gracefully
-            eprintln!("Failed to acquire LOCALE lock");
+            log::error!("Failed to acquire LOCALE lock");
         }
     }
 }

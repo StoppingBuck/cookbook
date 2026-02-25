@@ -29,26 +29,26 @@ impl Default for UserSettings {
 
 impl UserSettings {
     pub fn load(path: &PathBuf) -> Self {
-        println!("[DEBUG] Loading UserSettings from: {}", path.display());
+        log::debug!("Loading UserSettings from: {}", path.display());
         if let Ok(data) = fs::read_to_string(path) {
             let settings: Self = toml::from_str(&data).unwrap_or_default();
-            println!("[DEBUG] Loaded UserSettings: theme={:?}", settings.theme);
+            log::debug!("Loaded UserSettings: theme={:?}", settings.theme);
             settings
         } else {
-            println!(
-                "[DEBUG] No settings file found at {}, using default theme.",
+            log::debug!(
+                "No settings file found at {}, using default theme.",
                 path.display()
             );
             Self::default()
         }
     }
     pub fn save(&self, path: &PathBuf) {
-        println!("[DEBUG] Saving UserSettings to: {}", path.display());
+        log::debug!("Saving UserSettings to: {}", path.display());
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
         }
         if let Ok(data) = toml::to_string(self) {
-            println!("[DEBUG] Saving UserSettings: theme={:?}", self.theme);
+            log::debug!("Saving UserSettings: theme={:?}", self.theme);
             let _ = fs::write(path, data);
         }
     }

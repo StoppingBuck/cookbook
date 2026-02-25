@@ -24,19 +24,19 @@ pub fn show_about_dialog<Msg, C>(
         .unwrap_or_else(|| PathBuf::from("."));
     // Use the project source directory to find the app icon during development
     let icon_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/app_icon.png");
-    eprintln!("[AboutDialog DEBUG] exe_dir: {:?}", exe_dir);
-    eprintln!("[AboutDialog DEBUG] icon_path: {:?}", icon_path);
+    log::debug!("[AboutDialog] exe_dir: {:?}", exe_dir);
+    log::debug!("[AboutDialog] icon_path: {:?}", icon_path);
     let logo_pixbuf = match gdk_pixbuf::Pixbuf::from_file(&icon_path) {
         Ok(pixbuf) => {
-            eprintln!(
-                "[AboutDialog DEBUG] Successfully loaded Pixbuf: {:?}",
+            log::debug!(
+                "[AboutDialog] Successfully loaded Pixbuf: {:?}",
                 icon_path
             );
             Some(pixbuf)
         }
         Err(err) => {
-            eprintln!(
-                "[AboutDialog DEBUG] Failed to load Pixbuf: {:?} | Error: {}",
+            log::error!(
+                "[AboutDialog] Failed to load Pixbuf: {:?} | Error: {}",
                 icon_path, err
             );
             None
@@ -59,10 +59,10 @@ pub fn show_about_dialog<Msg, C>(
         .build();
 
     if let Some(texture) = logo_image {
-        eprintln!("[AboutDialog DEBUG] Setting logo texture");
+        log::debug!("[AboutDialog] Setting logo texture");
         about_dialog.set_logo(Some(&texture));
     } else {
-        eprintln!("[AboutDialog DEBUG] No logo texture to set");
+        log::debug!("[AboutDialog] No logo texture to set");
     }
 
     // Reset the flag immediately after creating the dialog

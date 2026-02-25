@@ -35,6 +35,8 @@ show_help() {
     echo "  check               - Run cargo check on all Rust components"
     echo "  clean               - Clean all build artifacts"
     echo "  test                - Run all tests"
+    echo "  engine-test         - Run cookbook-engine tests (fast, no display needed)"
+    echo "  gtk-test-headless   - Run GTK tests headlessly (requires xvfb-run)"
     echo "  help                - Show this help message"
     echo ""
 }
@@ -42,6 +44,24 @@ gtk_compile() {
     echo -e "${CYAN}🔧 Compiling GTK application...${NC}"
     cd "$PROJECT_ROOT"
     RUST_BACKTRACE=1 cargo build -p cookbook-gtk
+}
+
+engine_test() {
+    echo -e "${CYAN}🧪 Running cookbook-engine tests (fast, no display needed)...${NC}"
+    cd "$PROJECT_ROOT"
+    cargo test -p cookbook-engine
+    echo -e "${GREEN}✅ Engine tests complete${NC}"
+}
+
+gtk_test_headless() {
+    echo -e "${CYAN}🧪 Running GTK tests headlessly (requires xvfb)...${NC}"
+    cd "$PROJECT_ROOT"
+    if ! command -v xvfb-run >/dev/null 2>&1; then
+        echo -e "${YELLOW}⚠️  xvfb-run not found. Install with: sudo pacman -S xorg-server-xvfb${NC}"
+        exit 1
+    fi
+    xvfb-run -a cargo test -p cookbook-gtk
+    echo -e "${GREEN}✅ GTK headless tests complete${NC}"
 }
 
 check_device() {
@@ -54,6 +74,7 @@ check_device() {
 }
 
 run_gtk() {
+    # TIP: For verbose logging, run: RUST_LOG=debug ./dev.sh gtk
     echo -e "${CYAN}🔧 Building and running GTK application...${NC}"
     cd "$PROJECT_ROOT"
     RUST_BACKTRACE=1 cargo run -p cookbook-gtk
@@ -160,7 +181,13 @@ case "${1:-help}" in
         android
         ;;
     "check")
-       run_test
+        run_check
+        ;;
+    "engine-test")
+        engine_test
+        ;;
+    "gtk-test-headless")
+        gtk_test_headless
         ;;
     "gtk-test")
         echo -e "${CYAN}🧪 Running GTK tests...${NC}"

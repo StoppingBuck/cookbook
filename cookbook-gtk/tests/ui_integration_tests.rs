@@ -26,7 +26,7 @@ mod tests {
             let num_recipes = parts.model.data_manager.as_ref()
                 .map(|dm| dm.get_all_recipes().len())
                 .unwrap_or(0);
-            println!("Loaded {} recipes for test", num_recipes);
+            log::debug!("Loaded {} recipes for test", num_recipes);
 
             if let Some(dm) = parts.model.data_manager.as_ref() {
                 update_recipes_list(
@@ -42,7 +42,7 @@ mod tests {
             let num_recipes = parts.model.data_manager.as_ref()
                 .map(|dm| dm.get_all_recipes().len())
                 .unwrap_or(0);
-            println!("Loaded {} recipes for test", num_recipes);
+            log::debug!("Loaded {} recipes for test", num_recipes);
 
             let list_box = &widgets.recipes_list_box;
             if num_recipes == 0 {

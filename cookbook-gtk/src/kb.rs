@@ -74,7 +74,7 @@ pub fn update_kb_list<C>(
 
 /// Converts a subset of Markdown to Pango markup for GTK labels.
 /// Supports headings, bold, italic, unordered lists, and links.
-fn markdown_to_pango(md: &str) -> String {
+pub fn markdown_to_pango(md: &str) -> String {
     let mut out = String::new();
     let bold_re = Regex::new(r"\*\*(.+?)\*\*");
     let bold_re = match bold_re {
@@ -239,7 +239,7 @@ pub fn build_kb_detail_view(data_manager: &Rc<DataManager>, kb_slug: &str) -> gt
                                     } else { (0, 0) };
                                     // Only print if all allocations are nonzero
                                     if win_w > 0 && win_h > 0 && cont_alloc.width() > 0 && cont_alloc.height() > 0 && alloc.width() > 0 && alloc.height() > 0 && img_alloc.width() > 0 && img_alloc.height() > 0 {
-                                        println!("[KB DEBUG] Window size: {}x{} | details_container: {}x{} | aspect_frame: {}x{} | image: {}x{}", win_w, win_h, cont_alloc.width(), cont_alloc.height(), alloc.width(), alloc.height(), img_alloc.width(), img_alloc.height());
+                                        log::debug!("Window size: {}x{} | details_container: {}x{} | aspect_frame: {}x{} | image: {}x{}", win_w, win_h, cont_alloc.width(), cont_alloc.height(), alloc.width(), alloc.height(), img_alloc.width(), img_alloc.height());
                                         *printed = true;
                                         return glib::ControlFlow::Break;
                                     }

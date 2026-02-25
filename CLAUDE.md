@@ -14,7 +14,11 @@ Use `./dev.sh` for all common tasks:
 ./dev.sh test             # Run all tests
 ./dev.sh clean            # Clean build artifacts
 ./dev.sh android          # Build, install, run, and stream logs for Pantryman
+./dev.sh engine-test     # Run cookbook-engine tests (fast, no display needed)
+./dev.sh gtk-test-headless  # Run GTK tests headlessly (requires xvfb-run)
 ```
+
+For verbose GTK log output: `RUST_LOG=debug ./dev.sh gtk`
 
 **Cookbook-GTK compile loop:** After every edit to `cookbook-gtk`, run `./dev.sh gtk-compile` immediately. Fix all errors before running it again.
 
@@ -30,6 +34,14 @@ This is a cross-platform recipe and pantry management application with three com
 The core business logic layer. Exposes a `DataManager` struct that handles all file I/O and domain logic. No GUI code here — ever.
 
 Key types: `Ingredient`, `PantryItem`, `Recipe`, `KbEntry`, `DataManager`.
+
+```
+cookbook-engine/src/
+  lib.rs          — module declarations and re-exports
+  types.rs        — all data types (Ingredient, Recipe, PantryItem, Pantry, KbEntry, etc.)
+  file_io.rs      — file read/write impls (from_file/to_file)
+  data_manager.rs — DataManager struct and all business logic methods
+```
 
 ### `cookbook-gtk/` (Rust + GTK4 desktop app)
 Frontend built with [Relm4](https://relm4.org/) (GTK4 bindings). The `AppModel` (in `lib.rs`) implements `SimpleComponent` and holds all app state. Modules map to tabs/views: `recipes.rs`, `pantry.rs`, `kb.rs`, `settings.rs`, `sidebar.rs`. Message passing uses the `AppMsg` enum in `types.rs`.
