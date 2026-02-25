@@ -1,6 +1,6 @@
 # Cookbook Project Development Documentation
 
-**Last Updated**: July 22, 2025
+**Last Updated**: February 2026
 
 ## Overview
 
@@ -8,9 +8,7 @@ Cookbook is a cross-platform recipe and pantry management application. This docu
 
 ## Quickstart for New Contributors
 
-Before you begin, please see the new [README.md](README.md) in the project root for up-to-date bootstrapping instructions for all major platforms (Windows, WSL, Oracle Linux, Ubuntu, Fedora, Arch, NixOS, macOS). It lists all required dependencies and installation commands for both the GTK desktop frontend and the Pantryman Android app.
-
-Once your environment is set up, use the provided `dev.sh` script for common development tasks (see below).
+See [README.md](README.md) for platform-specific dependency installation and a quick-start guide. Once your environment is set up, use `./dev.sh` for all common development tasks (see below).
 
 ## Project Structure
 
@@ -107,14 +105,15 @@ The engine has been thoroughly tested with comprehensive test suites:
 
 All tests confirm the engine works correctly. Issues were in the Android app layer, not the core engine.
 
-### Current Status (June 2025)
+### Current Status
 
-✅ **STABLE**: Core functionality working reliably  
-✅ **TESTED**: Comprehensive test coverage proving engine reliability  
-✅ **DOCUMENTED**: All major issues identified and resolved  
-✅ **READY**: App ready for regular use with third-party sync solutions  
+✅ **STABLE**: Core functionality working reliably
+✅ **ENGINE TESTED**: Engine-level tests confirm YAML persistence works correctly
+✅ **DATA LOSS BUG FIXED**: App no longer resets data on startup
+⚠️ **Android tests missing**: No automated tests exist for the Kotlin layer or JNI integration
+⚠️ **Content URI limitation**: Picking directories from external storage via the Android file picker does not yet work correctly (falls back to default)
 
-The Pantryman app now provides a solid foundation for mobile pantry management with reliable data persistence and sync capabilities.
+See [TODO.md](../TODO.md) for the full list of open issues.
 
 ---
 
