@@ -1,781 +1,738 @@
-// app.rs — real SimpleComponent impl for AppModel, plus build_app_model_and_widgets for tests.
-
-use crate::user_settings::UserSettings;
-use cookbook_engine::DataManager;
-use gtk::prelude::*;
+/// Main application component: AppModel (state), AppMsg (messages), AppWidgets (UI references).
+use crate::config::{Theme, UserSettings};
+use crate::ui_constants::*;
+use cookbook_engine::{DataManager, Ingredient, Recipe};
+use libadwaita as adw;
 use relm4::gtk;
-use relm4::gtk::glib;
-use relm4::ComponentParts;
-use relm4::ComponentSender;
-use relm4::RelmWidgetExt;
-use relm4::SimpleComponent;
-use std::cell::Cell;
-use std::env;
+use relm4::{gtk::prelude::*, ComponentParts, ComponentSender, SimpleComponent};
+use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
-use crate::types::{AppModel, AppMsg, AppWidgets, Tab};
-use crate::ui_constants::*;
 
-impl SimpleComponent for AppModel {
+// ── Tab enum ──────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Tab {
+    Recipes,
+    Pantry,
+    Kb,
+    Settings,
+}
+
+// ── Messages ──────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub enum AppMsg {
+    // Navigation
+    SwitchTab(Tab),
+
+    // Recipes
+    SearchRecipes(String),
+    SelectRecipe(Option<String>),
+    AddRecipe,
+    EditRecipe(String),
+    DeleteRecipe(String),
+    SaveRecipe { original: Option<String>, recipe: Recipe },
+
+    // Pantry
+    SearchIngredients(String),
+    SelectIngredient(Option<String>),
+    ToggleInStockOnly(bool),
+    AddIngredient,
+    EditIngredient(String),
+    DeleteIngredient(String),
+    SaveIngredient {
+        original: Option<String>,
+        ingredient: Ingredient,
+        in_pantry: bool,
+        qty: Option<f64>,
+        qty_type: String,
+    },
+
+    // Knowledge Base
+    SelectKb(Option<String>),
+
+    // Settings
+    SetDataDir(String),
+    SetTheme(String),
+
+    // System
+    ShowToast(String),
+    ReloadAll,
+}
+
+// ── Application state ─────────────────────────────────────────────────────────
+
+pub struct App {
+    pub dm: Option<Rc<RefCell<DataManager>>>,
+    pub data_dir: PathBuf,
+    pub settings: Rc<RefCell<UserSettings>>,
+
+    pub tab: Tab,
+
+    // Recipes state
+    pub recipe_search: String,
+    pub selected_recipe: Option<String>,
+
+    // Pantry state
+    pub ingredient_search: String,
+    pub selected_ingredient: Option<String>,
+    pub category_filter: Vec<String>,
+    pub in_stock_only: bool,
+
+    // KB state
+    pub selected_kb: Option<String>,
+
+    // Dirty flags (Cell<bool> avoids &mut self in update_view)
+    pub recipes_dirty: Cell<bool>,
+    pub pantry_dirty: Cell<bool>,
+    pub kb_dirty: Cell<bool>,
+    pub recipe_detail_dirty: Cell<bool>,
+    pub ingredient_detail_dirty: Cell<bool>,
+    pub kb_detail_dirty: Cell<bool>,
+
+    // Pending dialog requests (RefCell allows mutation from &self in update_view)
+    pub pending_add_recipe: Cell<bool>,
+    pub pending_edit_recipe: RefCell<Option<String>>,
+    pub pending_add_ingredient: Cell<bool>,
+    pub pending_edit_ingredient: RefCell<Option<String>>,
+}
+
+// ── Widget references ─────────────────────────────────────────────────────────
+
+pub struct AppWidgets {
+    pub window: adw::ApplicationWindow,
+    pub toast_overlay: adw::ToastOverlay,
+    pub main_stack: gtk::Stack,
+    pub nav_list: gtk::ListBox,
+
+    // Recipes
+    pub recipe_list: gtk::ListBox,
+    pub recipe_detail: gtk::Box,
+
+    // Pantry
+    pub pantry_list: gtk::ListBox,
+    pub ingredient_detail: gtk::Box,
+    pub in_stock_switch: gtk::Switch,
+
+    // KB
+    pub kb_list: gtk::ListBox,
+    pub kb_detail: gtk::Box,
+}
+
+// ── SimpleComponent impl ──────────────────────────────────────────────────────
+
+impl SimpleComponent for App {
     type Init = ();
     type Input = AppMsg;
     type Output = ();
-    type Root = gtk::ApplicationWindow;
+    type Root = adw::ApplicationWindow;
     type Widgets = AppWidgets;
 
-    // init_root creates the main application window
     fn init_root() -> Self::Root {
-        gtk::ApplicationWindow::builder()
+        adw::ApplicationWindow::builder()
             .title("Cookbook")
-            .default_width(1024)
-            .default_height(768)
+            .default_width(DEFAULT_WINDOW_WIDTH)
+            .default_height(DEFAULT_WINDOW_HEIGHT)
             .build()
     }
 
     fn init(
-        _: Self::Init,
+        _init: Self::Init,
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        build_app_model_and_widgets(root, Some(sender))
-    }
+        use adw::prelude::*;
 
-    // == UPDATE STARTS HERE ==
-    // update handles incoming messages (e.g. switching tabs, selecting a recipe) and updates the model state
-    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
-        match msg {
-            // Message: User switches tabs
-            AppMsg::SwitchTab(new_tab) => {
-                self.current_tab = new_tab; // Update the current tab
+        let settings = UserSettings::load();
+        let data_dir = UserSettings::effective_data_dir();
 
-                // Reset selection when changing tabs
-                if self.current_tab == Tab::Recipes {
-                    self.selected_recipe = None;
-                }
-                if self.current_tab == Tab::Pantry {
-                    self.selected_ingredient = None;
-                }
-            }
-            // Message: User clicks on the About button
-            AppMsg::ShowAbout => {
-                self.show_about_dialog = true;
-            }
-            // Message: User clicks on the Help button
-            AppMsg::ShowHelp => {
-                self.show_help_dialog = true;
-            }
-            // Message: User closes the About or Help dialog
-            AppMsg::ResetDialogs => {
-                // Reset all dialog flags
-                self.show_about_dialog = false;
-                self.show_help_dialog = false;
-            }
-            // Message: User selects a recipe
-            AppMsg::SelectRecipe(recipe_name) => {
-                self.selected_recipe = Some(recipe_name);
-            }
-            // Message: User selects an ingredient
-            AppMsg::SelectIngredient(ingredient_name) => {
-                self.selected_ingredient = Some(ingredient_name);
-            }
-            // Message: User selects a Knowledge Base entry
-            AppMsg::SelectKnowledgeBaseEntry(slug) => {
-                self.selected_kb_entry = Some(slug);
-            }
-            // Message: User toggles a pantry category filter
-            AppMsg::TogglePantryCategory(category, is_selected) => {
-                if is_selected && !self.selected_pantry_categories.contains(&category) {
-                    self.selected_pantry_categories.push(category);
-                    self.pantry_list_needs_rebuild.set(true);
-                } else if !is_selected {
-                    self.selected_pantry_categories.retain(|c| c != &category);
-                    self.pantry_list_needs_rebuild.set(true);
-                }
-            }
-            // Message: User toggles the in-stock filter
-            AppMsg::ToggleInStockFilter(show_in_stock_only) => {
-                self.show_in_stock_only = show_in_stock_only;
-                self.pantry_list_needs_rebuild.set(true);
-            }
-            // Message: User types in the search bar
-            AppMsg::SearchTextChanged(text) => {
-                self.search_text = text;
-                self.pantry_list_needs_rebuild.set(true);
-            }
-            // Message: User clicks on the Edit Ingredient button
-            AppMsg::EditIngredient(ingredient_name) => {
-                if let Some(ref data_manager) = self.data_manager {
-                    if let Some(ingredient) = data_manager.get_ingredient(&ingredient_name) {
-                        let pantry_item = data_manager.get_pantry_item(&ingredient_name);
-                        crate::pantry::show_edit_ingredient_dialog(
-                            &ingredient,
-                            pantry_item,
-                            self.data_manager.clone(),
-                            sender.clone(),
-                            ingredient_name.clone(),
-                        );
-                    }
-                }
-            }
-            // Message: User clicks on the Edit Recipe button
-            AppMsg::EditRecipe(recipe_title) => {
-                if let Some(ref data_manager) = self.data_manager {
-                    if let Some(recipe) = data_manager.get_recipe(&recipe_title) {
-                        crate::recipes::show_edit_recipe_dialog(
-                            &recipe,
-                            self.data_manager.clone(),
-                            sender.clone(),
-                            recipe_title.clone(),
-                        );
-                    }
-                }
-            }
-            // Message: User clicks the Add Ingredient button
-            AppMsg::AddIngredient => {
-                // Create a blank ingredient and no pantry item
-                let blank_ingredient = cookbook_engine::Ingredient {
-                    name: String::new(),
-                    slug: String::new(),
-                    category: String::new(),
-                    kb: None,
-                    tags: Some(Vec::new()),
-                    translations: None,
-                };
-                crate::pantry::show_edit_ingredient_dialog(
-                    &blank_ingredient,
-                    None,
-                    self.data_manager.clone(),
-                    sender.clone(),
-                    String::new(),
-                );
-            }
-            // Message: User updates a recipe
-            AppMsg::UpdateRecipe(original_title, new_recipe) => {
-                // Use the engine's utility method for handling updates
-                if let Some(old_data_manager) = &self.data_manager {
-                    // Use the DataManager method that handles the update process
-                    match DataManager::create_with_updated_recipe(
-                        old_data_manager.get_data_dir(),
-                        &original_title,
-                        new_recipe.clone(),
-                    ) {
-                        Ok(updated_manager) => {
-                            // Replace the old manager with our updated one
-                            self.data_manager = Some(Rc::new(updated_manager));
+        let dm: Option<Rc<RefCell<DataManager>>> =
+            DataManager::new(&data_dir)
+                .map(|m| Rc::new(RefCell::new(m)))
+                .map_err(|e| log::warn!("Could not load data: {}", e))
+                .ok();
 
-                            // Update the selected recipe to the new title
-                            let new_selected_title = new_recipe.title.clone();
-                            self.selected_recipe = Some(new_selected_title);
+        let app_state = App {
+            dm: dm.clone(),
+            data_dir: data_dir.clone(),
+            settings: Rc::new(RefCell::new(settings.clone())),
+            tab: Tab::Recipes,
+            recipe_search: String::new(),
+            selected_recipe: None,
+            ingredient_search: String::new(),
+            selected_ingredient: None,
+            category_filter: Vec::new(),
+            in_stock_only: false,
+            selected_kb: None,
+            recipes_dirty: Cell::new(true),
+            pantry_dirty: Cell::new(true),
+            kb_dirty: Cell::new(true),
+            recipe_detail_dirty: Cell::new(false),
+            ingredient_detail_dirty: Cell::new(false),
+            kb_detail_dirty: Cell::new(false),
+            pending_add_recipe: Cell::new(false),
+            pending_edit_recipe: RefCell::new(None),
+            pending_add_ingredient: Cell::new(false),
+            pending_edit_ingredient: RefCell::new(None),
+        };
 
-                            // Force a full UI refresh by triggering a tab switch and back
-                            // This ensures the recipe list is updated with any name changes
-                            let sender_clone = sender.clone();
-                            glib::spawn_future_local(async move {
-                                // Switch to another tab and back to force a complete refresh
-                                sender_clone.input(AppMsg::SwitchTab(Tab::Pantry));
-                                sender_clone.input(AppMsg::SwitchTab(Tab::Recipes));
-                            });
-                        }
-                        Err(err) => {
-                            log::error!("Error updating recipe: {:?}", err);
-                            let error_message = format!("Failed to update recipe: {}", err);
-                            self.error_message = Some(error_message);
-                        }
-                    }
-                }
-            }
-            // Message: User clicks the Add Recipe button
-            AppMsg::AddRecipe => {
-                crate::recipes::show_add_recipe_dialog(self.data_manager.clone(), sender.clone());
-            }
-            // Message: User clicks the Delete Recipe button
-            AppMsg::DeleteRecipe(recipe_title) => {
-                if let Some(ref data_manager) = self.data_manager {
-                    let data_dir = data_manager.get_data_dir();
-                    let recipes_dir = data_dir.join("recipes");
-                    let file_name = format!("{}.md", recipe_title.replace(" ", "_"));
-                    let recipe_path = recipes_dir.join(&file_name);
-                    let result = std::fs::remove_file(&recipe_path);
-                    match result {
-                        Ok(_) => {
-                            self.selected_recipe = None;
-                            sender.input(AppMsg::ReloadRecipes);
-                        }
-                        Err(err) => {
-                            let error_message = format!("Failed to delete recipe: {}", err);
-                            self.error_message = Some(error_message);
-                        }
-                    }
-                }
-            }
-            // Message: Explicitly reload recipes data and UI
-            AppMsg::DeleteIngredient(ingredient_slug) => {
-                if let Some(ref data_manager) = self.data_manager {
-                    let data_dir = data_manager.get_data_dir();
-                    let ingredients_dir = data_dir.join("ingredients");
-                    let file_name = format!("{}.yaml", ingredient_slug);
-                    let ingredient_path = ingredients_dir.join(&file_name);
-                    let result = std::fs::remove_file(&ingredient_path);
-                    match result {
-                        Ok(_) => {
-                            self.selected_ingredient = None;
-                            sender.input(AppMsg::ReloadPantry);
-                        }
-                        Err(err) => {
-                            let error_message = format!("Failed to delete ingredient: {}", err);
-                            self.error_message = Some(error_message);
-                        }
-                    }
-                }
-            }
-            AppMsg::ReloadRecipes => {
-                if let Some(ref data_manager) = self.data_manager {
-                    match cookbook_engine::DataManager::new(data_manager.get_data_dir()) {
-                        Ok(updated_manager) => {
-                            self.data_manager = Some(Rc::new(updated_manager));
-                        }
-                        Err(err) => {
-                            let error_message = format!("Failed to reload recipes: {}", err);
-                            self.error_message = Some(error_message);
-                        }
-                    }
-                }
-            }
-            // Message: Explicitly reload pantry data and UI
-            AppMsg::ReloadPantry => {
-                if let Some(ref data_manager) = self.data_manager {
-                    match cookbook_engine::DataManager::new(data_manager.get_data_dir()) {
-                        Ok(updated_manager) => {
-                            self.data_manager = Some(Rc::new(updated_manager));
-                            // Do not attempt to rebuild pantry tab UI here; update_view will handle it
-                            self.pantry_list_needs_rebuild.set(true);
-                        }
-                        Err(err) => {
-                            let error_message = format!("Failed to reload pantry: {}", err);
-                            self.error_message = Some(error_message);
-                        }
-                    }
-                }
-            }
-            // Message: User creates a new recipe
-            AppMsg::CreateRecipe(new_recipe) => {
-                if let Some(ref data_manager) = self.data_manager {
-                    let data_dir = data_manager.get_data_dir();
-                    let recipes_dir = data_dir.join("recipes");
-                    let file_name = format!("{}.md", new_recipe.title.replace(" ", "_"));
-                    let recipe_path = recipes_dir.join(&file_name);
-                    // Write the new recipe to file
-                    match new_recipe.to_file(&recipe_path) {
-                        Ok(_) => {
-                            sender.input(AppMsg::ReloadRecipes);
-                            self.selected_recipe = Some(new_recipe.title.clone());
-                        }
-                        Err(err) => {
-                            let error_message = format!("Failed to create recipe: {}", err);
-                            self.error_message = Some(error_message);
-                        }
-                    }
-                }
-            }
-            // Message: User clicks the refresh button for category popover
-            AppMsg::RefreshCategoryPopover => {
-                log::debug!("Received RefreshCategoryPopover message");
-                self.refresh_category_popover.set(true);
-                // No model state to update, but force update_view to run
-            }
-            AppMsg::ClearError => {
-                self.error_message = None;
-            }
-        }
-    }
-    // == UPDATE ENDS HERE ==
+        // ── Apply initial theme ───────────────────────────────────────────────
+        apply_theme(&settings.theme);
 
-    // == UPDATE_VIEW STARTS HERE ==
-    // update_view updates the UI based on the current model state
-    fn update_view(&self, widgets: &mut Self::Widgets, sender: ComponentSender<Self>) {
-        // Pantry category popover refresh logic
-        if self.refresh_category_popover.get() {
-            if let Some(ref refresh_fn) = widgets.refresh_categories {
-                log::debug!("Calling refresh_categories closure from update_view");
-                refresh_fn(self);
-            } else {
-                log::debug!("refresh_categories closure is None");
-            }
-            self.refresh_category_popover.set(false);
+        // ── Build main layout ─────────────────────────────────────────────────
+        let toast_overlay = adw::ToastOverlay::new();
+
+        let toolbar_view = adw::ToolbarView::new();
+
+        // Header bar
+        let header = adw::HeaderBar::new();
+        let win_title = adw::WindowTitle::new("Cookbook", "");
+        header.set_title_widget(Some(&win_title));
+        toolbar_view.add_top_bar(&header);
+
+        // Content: sidebar + stack
+        let content_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+
+        // ── Sidebar ───────────────────────────────────────────────────────────
+        let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        sidebar.set_width_request(SIDEBAR_WIDTH);
+
+        let nav_list = gtk::ListBox::new();
+        nav_list.set_selection_mode(gtk::SelectionMode::Single);
+        nav_list.add_css_class("navigation-sidebar");
+        nav_list.set_vexpand(true);
+
+        for (icon, label, tab_name) in &[
+            ("emblem-documents-symbolic", "Recipes", "recipes"),
+            ("view-list-symbolic", "Pantry", "pantry"),
+            ("system-help-symbolic", "Knowledge Base", "kb"),
+            ("preferences-system-symbolic", "Settings", "settings"),
+        ] {
+            let row = gtk::ListBoxRow::new();
+            row.set_widget_name(tab_name);
+            let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            row_box.set_margin_top(8);
+            row_box.set_margin_bottom(8);
+            row_box.set_margin_start(12);
+            row_box.set_margin_end(12);
+            let icon_img = gtk::Image::from_icon_name(icon);
+            let lbl = gtk::Label::new(Some(label));
+            lbl.set_halign(gtk::Align::Start);
+            lbl.set_hexpand(true);
+            row_box.append(&icon_img);
+            row_box.append(&lbl);
+            row.set_child(Some(&row_box));
+            nav_list.append(&row);
         }
 
-        // Update the main stack to show the current tab
-        crate::tabs::update_tab_view(&self.current_tab, &widgets.main_stack);
+        // Select first row (Recipes)
+        if let Some(first_row) = nav_list.row_at_index(0) {
+            nav_list.select_row(Some(&first_row));
+        }
 
-        // Update sidebar button styles based on the current tab
-        crate::sidebar::update_sidebar_buttons(&self.current_tab, &widgets.sidebar_buttons);
-
-        // Highlight the selected recipe in the Recipes list
-        if self.current_tab == Tab::Recipes {
-            if let Some(recipe_name) = self.selected_recipe.as_ref() {
-                log::debug!(
-                    "update_view - Recipe selection logic entered. selected_recipe={:?}",
-                    recipe_name
-                );
-                let mut found = false;
-                let mut i = 0;
-                while let Some(row) = widgets.recipes_list_box.row_at_index(i) {
-                    log::debug!("update_view - Checking recipe row {}", i);
-                    i += 1;
-                    // Try to find a label with the recipe name
-                    let label_text = if let Some(child) = row.child() {
-                        if let Some(label) = child.downcast_ref::<gtk::Label>() {
-                            label.text().to_string()
-                        } else if let Some(box_widget) = child.downcast_ref::<gtk::Box>() {
-                            // If the row is a Box, try to get the first child label
-                            if let Some(first_child) = box_widget.first_child() {
-                                if let Some(label) = first_child.downcast_ref::<gtk::Label>() {
-                                    label.text().to_string()
-                                } else {
-                                    String::new()
-                                }
-                            } else {
-                                String::new()
-                            }
-                        } else {
-                            String::new()
-                        }
-                    } else {
-                        String::new()
+        {
+            let sender_nav = sender.clone();
+            nav_list.connect_row_selected(move |_, row| {
+                if let Some(row) = row {
+                    let name = row.widget_name().to_string();
+                    let tab = match name.as_str() {
+                        "recipes" => Tab::Recipes,
+                        "pantry" => Tab::Pantry,
+                        "kb" => Tab::Kb,
+                        "settings" => Tab::Settings,
+                        _ => Tab::Recipes,
                     };
-                    log::debug!(
-                        "update_view - Recipe row label_text={:?}",
-                        label_text
-                    );
-                    if label_text == *recipe_name {
-                        log::debug!(
-                            "update_view - Found matching recipe row at index {}",
-                            i - 1
-                        );
-                        let already_selected = widgets
-                            .recipes_list_box
-                            .selected_row()
-                            .map(|selected| selected == row)
-                            .unwrap_or(false);
-                        if !already_selected {
-                            widgets.recipes_list_box.select_row(Some(&row));
-                        }
-                        found = true;
-                        break;
-                    }
+                    sender_nav.input(AppMsg::SwitchTab(tab));
                 }
-                log::debug!("update_view - Recipe found={}", found);
-                if !found && !self.search_text.is_empty() {
-                    log::debug!("update_view - Recipe not found, clearing search_text");
-                    let sender_clone = sender.clone();
-                    glib::spawn_future_local(async move {
-                        sender_clone.input(AppMsg::SearchTextChanged(String::new()));
-                    });
-                }
-            } else {
-                log::debug!("update_view - No recipe selected, clearing selection");
-                widgets
-                    .recipes_list_box
-                    .select_row(None::<&gtk::ListBoxRow>);
-            }
-        }
-
-        // Highlight the selected ingredient in the Pantry list
-        if self.current_tab == Tab::Pantry {
-            if let Some(selected_slug) = self.selected_ingredient.as_ref() {
-                log::debug!("update_view - Ingredient selection logic entered. selected_ingredient(slug)={:?}", selected_slug);
-                if let Some(row) = widgets.pantry_row_map.get(selected_slug) {
-                    let already_selected = widgets
-                        .pantry_list
-                        .selected_row()
-                        .map(|selected| selected == *row)
-                        .unwrap_or(false);
-                    if !already_selected {
-                        widgets.pantry_list.select_row(Some(row));
-                    }
-                    log::debug!("update_view - Found matching pantry row for slug in map");
-                } else {
-                    log::debug!("update_view - Ingredient not found in pantry_row_map");
-                    if !self.search_text.is_empty() {
-                        let sender_clone = sender.clone();
-                        glib::spawn_future_local(async move {
-                            sender_clone.input(AppMsg::SearchTextChanged(String::new()));
-                        });
-                    }
-                }
-                // Update details pane for selected ingredient
-                if let Some(data_manager) = &self.data_manager {
-                    while let Some(child) = widgets.pantry_details.first_child() {
-                        widgets.pantry_details.remove(&child);
-                    }
-                    let detail = crate::pantry::build_ingredient_detail_view(
-                        data_manager,
-                        selected_slug,
-                        &sender,
-                        move |_| AppMsg::SwitchTab(Tab::Pantry),
-                        move |_| AppMsg::SelectKnowledgeBaseEntry(String::new()),
-                        move |_| AppMsg::SelectRecipe(String::new()),
-                        {
-                            let slug = selected_slug.clone();
-                            move |_| AppMsg::EditIngredient(slug.clone())
-                        },
-                        {
-                            let slug = selected_slug.clone();
-                            move |_| AppMsg::DeleteIngredient(slug.clone())
-                        },
-                    );
-                    widgets.pantry_details.append(&detail);
-                }
-            } else {
-                // Only clear selection if a row is actually selected
-                if widgets.pantry_list.selected_row().is_some() {
-                    log::debug!("update_view - No ingredient selected, clearing selection");
-                    widgets.pantry_list.select_row(None::<&gtk::ListBoxRow>);
-                } else {
-                    log::debug!("update_view - No ingredient selected, but no row is selected, skipping selection clear");
-                }
-                // Show placeholder in details pane
-                while let Some(child) = widgets.pantry_details.first_child() {
-                    widgets.pantry_details.remove(&child);
-                }
-                let placeholder = gtk::Label::new(Some("Select an ingredient to view details"));
-                widgets.pantry_details.append(&placeholder);
-            }
-        }
-
-        // Update recipe details if a recipe is selected
-        if self.current_tab == Tab::Recipes {
-            crate::recipes::update_recipe_details(
-                self.selected_recipe.as_deref(),
-                &widgets.recipes_details,
-                &self.data_manager,
-                Some(&sender),
-                AppMsg::EditRecipe,
-            );
-        }
-
-        // Update KB entry details if a KB entry is selected
-        if self.current_tab == Tab::KnowledgeBase {
-            // Select the correct KB entry in the list box
-            if let Some(slug) = &self.selected_kb_entry {
-                crate::kb::update_kb_details::<AppModel>(&widgets.kb_details, &self.data_manager, slug);
-            } else {
-                crate::kb::show_kb_details_placeholder(&widgets.kb_details);
-            }
-
-            // Update the KB list if needed
-            // Only do this when first switching to the tab to avoid unnecessary rebuilds
-            if self.current_tab != Tab::KnowledgeBase {
-                crate::kb::update_kb_list(
-                    &widgets.kb_list_box,
-                    &self.data_manager,
-                    &sender,
-                    AppMsg::SelectKnowledgeBaseEntry,
-                );
-            }
-        }
-
-        // Handle About dialog
-        if self.show_about_dialog {
-            crate::dialogs::show_about_dialog(&widgets.window, &sender, AppMsg::ResetDialogs);
-        }
-
-        // Handle Help dialog
-        if self.show_help_dialog {
-            crate::dialogs::show_help_dialog(&widgets.window, &sender, AppMsg::ResetDialogs);
-        }
-
-        // Only rebuild pantry list if flagged
-        if self.current_tab == Tab::Pantry && self.pantry_list_needs_rebuild.get() {
-            widgets.pantry_row_map.clear();
-            crate::pantry::rebuild_pantry_list(
-                &widgets.pantry_list,
-                &self.search_text,
-                &self.selected_pantry_categories,
-                self.show_in_stock_only,
-                |slug| AppMsg::SelectIngredient(slug),
-                self,
-                Some(sender.clone()),
-                Some(&widgets.pantry_details),
-                Some(&mut widgets.pantry_row_map),
-            );
-            self.pantry_list_needs_rebuild.set(false);
-            self.pantry_list_needs_rebuild.set(false);
-        }
-
-        // Update recipes list and details when ReloadRecipes is triggered
-        if self.current_tab == Tab::Recipes {
-            crate::recipes::refresh_recipes_ui(self, widgets, &sender);
-        } else {
-            // Only update the recipes list if not already handled by refresh_recipes_ui
-            crate::recipes::update_recipes_list(
-                &widgets.recipes_list_box,
-                &self.data_manager,
-                &self.search_text,
-                self.selected_recipe.as_ref(),
-                Some(&sender),
-                AppMsg::SelectRecipe,
-            );
-        }
-
-        if let Some(ref msg) = self.error_message {
-            crate::dialogs::show_error_dialog(&widgets.window, msg);
-            // Clear the error after showing
-            let sender_clone = sender.clone();
-            glib::spawn_future_local(async move {
-                sender_clone.input(AppMsg::ClearError);
             });
         }
-    } // == UPDATE_VIEW ENDS HERE ==
-}
 
-/// Helper for tests: builds the AppModel and AppWidgets for UI testing
-pub fn build_app_model_and_widgets(
-    root: gtk::ApplicationWindow,
-    sender: Option<ComponentSender<AppModel>>,
-) -> relm4::ComponentParts<AppModel> {
-    let config_path = dirs::config_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("cookbook-gtk/user_settings.toml");
-    let user_settings = UserSettings::load(&config_path);
-    // Set GTK theme BEFORE any widgets are created
-    {
-        let gtk_settings = gtk::Settings::default().unwrap();
-        match &user_settings.theme {
-            crate::user_settings::Theme::Light => {
-                #[allow(deprecated)]
-                let _ = gtk_settings.set_property("gtk-application-prefer-dark-theme", &false);
-                let _ = gtk_settings.set_property("gtk-theme-name", &"Adwaita");
-            }
-            crate::user_settings::Theme::Dark => {
-                #[allow(deprecated)]
-                let _ = gtk_settings.set_property("gtk-application-prefer-dark-theme", &true);
-                let _ = gtk_settings.set_property("gtk-theme-name", &"Adwaita-dark");
-            }
-            crate::user_settings::Theme::System => {
-                #[allow(deprecated)]
-                let _ = gtk_settings.set_property("gtk-application-prefer-dark-theme", &false);
-                let _ = gtk_settings.set_property("gtk-theme-name", &"Adwaita");
-            }
+        sidebar.append(&nav_list);
+
+        // ── Main stack ────────────────────────────────────────────────────────
+        let main_stack = gtk::Stack::new();
+        main_stack.set_hexpand(true);
+        main_stack.set_vexpand(true);
+        main_stack.set_transition_type(gtk::StackTransitionType::Crossfade);
+        main_stack.set_transition_duration(150);
+
+        // Recipes tab
+        let (recipes_widget, recipe_list, recipe_detail) =
+            crate::recipes::build_recipes_tab(&dm, sender.clone());
+        main_stack.add_named(&recipes_widget, Some("recipes"));
+
+        // Pantry tab
+        let (pantry_widget, pantry_list, ingredient_detail, in_stock_switch) =
+            crate::pantry::build_pantry_tab(&dm, false, sender.clone());
+        main_stack.add_named(&pantry_widget, Some("pantry"));
+
+        // KB tab
+        let (kb_widget, kb_list, kb_detail) =
+            crate::kb::build_kb_tab(&dm, sender.clone());
+        main_stack.add_named(&kb_widget, Some("kb"));
+
+        // Settings tab
+        let settings_widget = crate::settings::build_settings_page(&sender);
+        main_stack.add_named(&settings_widget, Some("settings"));
+
+        main_stack.set_visible_child_name("recipes");
+
+        content_box.append(&sidebar);
+        content_box.append(&gtk::Separator::new(gtk::Orientation::Vertical));
+        content_box.append(&main_stack);
+
+        toolbar_view.set_content(Some(&content_box));
+        toast_overlay.set_child(Some(&toolbar_view));
+        root.set_content(Some(&toast_overlay));
+
+        let widgets = AppWidgets {
+            window: root,
+            toast_overlay,
+            main_stack,
+            nav_list,
+            recipe_list,
+            recipe_detail,
+            pantry_list,
+            ingredient_detail,
+            in_stock_switch,
+            kb_list,
+            kb_detail,
+        };
+
+        ComponentParts {
+            model: app_state,
+            widgets,
         }
     }
-    let mut data_dir = match env::var("COOKBOOK_DATA_DIR") {
-        Ok(path) => PathBuf::from(path),
-        Err(_) => {
-            let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            path.pop();
-            path.push("example");
-            path.push("data");
-            path
-        }
-    };
-    let config_path = dirs::config_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("cookbook-gtk/user_settings.toml");
-    let user_settings = UserSettings::load(&config_path);
-    if let Some(ref user_dir) = user_settings.data_dir {
-        data_dir = PathBuf::from(user_dir);
-    }
-    let user_settings_rc = std::rc::Rc::new(std::cell::RefCell::new(user_settings));
-    let mut model = AppModel {
-        data_manager: None,
-        data_dir: data_dir.clone(),
-        current_tab: Tab::Recipes,
-        selected_recipe: None,
-        selected_ingredient: None,
-        selected_kb_entry: None,
-        search_text: String::new(),
-        show_about_dialog: false,
-        show_help_dialog: false,
-        selected_pantry_categories: Vec::new(),
-        show_in_stock_only: false,
-        error_message: None,
-        refresh_category_popover: Cell::new(false),
-        user_settings: user_settings_rc.clone(),
-        pantry_list_needs_rebuild: Cell::new(true),
-    };
-    model.data_manager = match DataManager::new(&data_dir) {
-        Ok(manager) => Some(Rc::new(manager)),
-        Err(_) => None,
-    };
-    crate::i18n::set_language(&model.user_settings.borrow().language);
-    let main_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    let (sidebar, sidebar_buttons) = crate::sidebar::build_sidebar(sender.clone());
-    let main_stack = gtk::Stack::new();
-    main_stack.set_margin_top(DEFAULT_MARGIN);
-    main_stack.set_margin_bottom(DEFAULT_MARGIN);
-    main_stack.set_margin_end(DEFAULT_MARGIN);
-    main_stack.set_hexpand(true);
-    main_stack.set_vexpand(true);
-    let (recipes_container, recipes_list_box, recipes_details) =
-        crate::recipes::build_recipes_tab(&model, sender.clone());
-    let (
-        pantry_container,
-        pantry_list_container,
-        pantry_details_box,
-        stock_filter_switch,
-        pantry_title,
-        refresh_categories,
-    ) = crate::pantry::build_pantry_tab(&model, sender.clone());
-    let (kb_container, kb_list_box, kb_details, kb_label) =
-        crate::kb::build_kb_tab(&model, sender.clone());
-    let settings_container = crate::settings::build_settings_tab(
-        &model.user_settings.borrow().language,
-        {
-            let user_settings_rc = model.user_settings.clone();
-            let sender = sender.clone();
-            move |lang: String| {
-                let mut user_settings = user_settings_rc.borrow_mut();
-                user_settings.language = lang.clone();
-                let config_path = dirs::config_dir()
-                    .unwrap_or_else(|| std::path::PathBuf::from("."))
-                    .join("cookbook-gtk/user_settings.toml");
-                user_settings.save(&config_path);
-                crate::i18n::set_language(&lang);
-                if let Some(sender) = sender.as_ref() {
-                    sender.input(crate::types::AppMsg::ReloadPantry);
-                    sender.input(crate::types::AppMsg::ReloadRecipes);
-                    sender.input(crate::types::AppMsg::SwitchTab(Tab::Settings));
+
+    // ── Update (message handling) ─────────────────────────────────────────────
+
+    fn update(&mut self, msg: AppMsg, sender: ComponentSender<Self>) {
+        match msg {
+            AppMsg::SwitchTab(tab) => {
+                self.tab = tab;
+            }
+
+            // ── Recipes ───────────────────────────────────────────────────────
+            AppMsg::SearchRecipes(q) => {
+                self.recipe_search = q;
+                self.recipes_dirty.set(true);
+            }
+            AppMsg::SelectRecipe(title) => {
+                self.selected_recipe = title;
+                self.recipe_detail_dirty.set(true);
+            }
+            AppMsg::AddRecipe => {
+                self.pending_add_recipe.set(true);
+            }
+            AppMsg::EditRecipe(title) => {
+                *self.pending_edit_recipe.borrow_mut() = Some(title);
+            }
+            AppMsg::DeleteRecipe(title) => {
+                if let Some(dm) = &self.dm {
+                    match dm.borrow_mut().delete_recipe(&title) {
+                        Ok(_) => {
+                            if self.selected_recipe.as_deref() == Some(&title) {
+                                self.selected_recipe = None;
+                            }
+                            self.recipes_dirty.set(true);
+                            self.recipe_detail_dirty.set(true);
+                        }
+                        Err(e) => {
+                            sender.input(AppMsg::ShowToast(format!("Error: {}", e)));
+                        }
+                    }
                 }
             }
-        },
-        &model.data_dir.display().to_string(),
-        {
-            let user_settings_rc = model.user_settings.clone();
-            let sender = sender.clone();
-            move |new_data_dir: String| {
-                let mut user_settings = user_settings_rc.borrow_mut();
-                user_settings.data_dir = Some(new_data_dir.clone());
-                let config_path = dirs::config_dir()
-                    .unwrap_or_else(|| std::path::PathBuf::from("."))
-                    .join("cookbook-gtk/user_settings.toml");
-                user_settings.save(&config_path);
-                crate::utils::validate_and_create_data_dir(&new_data_dir);
-                if let Some(sender) = sender.as_ref() {
-                    sender.input(crate::types::AppMsg::ReloadPantry);
-                    sender.input(crate::types::AppMsg::ReloadRecipes);
-                    sender.input(crate::types::AppMsg::SwitchTab(Tab::Settings));
+            AppMsg::SaveRecipe { original, recipe } => {
+                if let Some(dm) = &self.dm {
+                    let result = match original {
+                        Some(ref orig) => dm.borrow_mut().update_recipe(orig, recipe.clone()),
+                        None => dm
+                            .borrow_mut()
+                            .create_recipe(recipe.clone())
+                            .map(|_| true),
+                    };
+                    match result {
+                        Ok(_) => {
+                            self.selected_recipe = Some(recipe.title.clone());
+                            self.recipes_dirty.set(true);
+                            self.recipe_detail_dirty.set(true);
+                        }
+                        Err(e) => {
+                            sender.input(AppMsg::ShowToast(format!("Error saving recipe: {}", e)));
+                        }
+                    }
                 }
             }
-        },
-        match &model.user_settings.borrow().theme {
-            crate::user_settings::Theme::System => "System",
-            crate::user_settings::Theme::Light => "Light",
-            crate::user_settings::Theme::Dark => "Dark",
-        },
-        {
-            let user_settings_rc = model.user_settings.clone();
-            let sender = sender.clone();
-            move |theme: String| {
-                // Set GTK theme immediately when changed
-                let gtk_settings = gtk::Settings::default().unwrap();
-                match theme.as_str() {
-                    "Light" => {
-                        let _ =
-                            gtk_settings.set_property("gtk-application-prefer-dark-theme", &false);
-                    }
-                    "Dark" => {
-                        let _ =
-                            gtk_settings.set_property("gtk-application-prefer-dark-theme", &true);
-                    }
-                    _ => {
-                        let _ =
-                            gtk_settings.set_property("gtk-application-prefer-dark-theme", &false);
+
+            // ── Pantry ────────────────────────────────────────────────────────
+            AppMsg::SearchIngredients(q) => {
+                self.ingredient_search = q;
+                self.pantry_dirty.set(true);
+            }
+            AppMsg::SelectIngredient(name) => {
+                self.selected_ingredient = name;
+                self.ingredient_detail_dirty.set(true);
+            }
+            AppMsg::ToggleInStockOnly(val) => {
+                self.in_stock_only = val;
+                self.pantry_dirty.set(true);
+            }
+            AppMsg::AddIngredient => {
+                self.pending_add_ingredient.set(true);
+            }
+            AppMsg::EditIngredient(name) => {
+                *self.pending_edit_ingredient.borrow_mut() = Some(name);
+            }
+            AppMsg::DeleteIngredient(name) => {
+                if let Some(dm) = &self.dm {
+                    match dm.borrow_mut().delete_ingredient(&name) {
+                        Ok(_) => {
+                            if self.selected_ingredient.as_deref() == Some(&name) {
+                                self.selected_ingredient = None;
+                            }
+                            self.pantry_dirty.set(true);
+                            self.ingredient_detail_dirty.set(true);
+                            self.recipes_dirty.set(true); // availability may have changed
+                        }
+                        Err(e) => {
+                            sender.input(AppMsg::ShowToast(format!("Error: {}", e)));
+                        }
                     }
                 }
-                // Try to force style refresh (if available)
-                #[cfg(feature = "v4_6")] // Only available in gtk4 v4_6+
+            }
+            AppMsg::SaveIngredient {
+                original,
+                ingredient,
+                in_pantry,
+                qty,
+                qty_type,
+            } => {
+                if let Some(dm) = &self.dm {
+                    let result = if let Some(ref orig) = original {
+                        dm.borrow_mut().update_ingredient_with_pantry(
+                            orig,
+                            ingredient.clone(),
+                            if in_pantry { qty } else { None },
+                            if in_pantry { Some(qty_type) } else { None },
+                            !in_pantry,
+                        )
+                    } else {
+                        // Create new ingredient first
+                        let create_result =
+                            dm.borrow_mut().create_ingredient(ingredient.clone());
+                        if let Err(e) = create_result {
+                            sender.input(AppMsg::ShowToast(format!("Error: {}", e)));
+                            return;
+                        }
+                        if in_pantry {
+                            dm.borrow_mut().update_pantry_item(
+                                &ingredient.name,
+                                qty,
+                                if qty_type.is_empty() { None } else { Some(qty_type) },
+                            )
+                        } else {
+                            Ok(true)
+                        }
+                    };
+                    match result {
+                        Ok(_) => {
+                            self.selected_ingredient = Some(ingredient.name.clone());
+                            self.pantry_dirty.set(true);
+                            self.ingredient_detail_dirty.set(true);
+                            self.recipes_dirty.set(true);
+                        }
+                        Err(e) => {
+                            sender.input(AppMsg::ShowToast(format!("Error: {}", e)));
+                        }
+                    }
+                }
+            }
+
+            // ── KB ────────────────────────────────────────────────────────────
+            AppMsg::SelectKb(slug) => {
+                self.selected_kb = slug;
+                self.kb_detail_dirty.set(true);
+            }
+
+            // ── Settings ──────────────────────────────────────────────────────
+            AppMsg::SetDataDir(dir) => {
+                let path = PathBuf::from(&dir);
+                self.data_dir = path.clone();
                 {
-                    if let Some(context) = gtk_settings.style_context() {
-                        context.invalidate();
+                    let mut s = self.settings.borrow_mut();
+                    s.data_dir = Some(dir);
+                    s.save();
+                }
+                // Reload data manager
+                match DataManager::new(&path) {
+                    Ok(new_dm) => {
+                        self.dm = Some(Rc::new(RefCell::new(new_dm)));
+                    }
+                    Err(e) => {
+                        sender.input(AppMsg::ShowToast(format!(
+                            "Could not load data from directory: {}",
+                            e
+                        )));
                     }
                 }
-                let mut user_settings = user_settings_rc.borrow_mut();
-                user_settings.theme = match theme.as_str() {
-                    "Light" => crate::user_settings::Theme::Light,
-                    "Dark" => crate::user_settings::Theme::Dark,
-                    _ => crate::user_settings::Theme::System,
-                };
-                let config_path = dirs::config_dir()
-                    .unwrap_or_else(|| std::path::PathBuf::from("."))
-                    .join("cookbook-gtk/user_settings.toml");
-                user_settings.save(&config_path);
-                log::debug!("Theme changed to: {}", theme);
-                if let Some(sender) = sender.as_ref() {
-                    sender.input(crate::types::AppMsg::SwitchTab(Tab::Settings));
-                }
+                self.recipes_dirty.set(true);
+                self.pantry_dirty.set(true);
+                self.kb_dirty.set(true);
+                self.selected_recipe = None;
+                self.selected_ingredient = None;
+                self.selected_kb = None;
             }
-        },
-    );
-    main_stack.add_named(&recipes_container, Some("recipes"));
-    main_stack.add_named(&pantry_container, Some("pantry"));
-    main_stack.add_named(&kb_container, Some("kb"));
-    main_stack.add_named(&settings_container, Some("settings"));
-    main_stack.set_visible_child_name("recipes");
-    main_box.append(&sidebar);
-    let vert_separator = gtk::Separator::new(gtk::Orientation::Vertical);
-    main_box.append(&vert_separator);
-    main_box.append(&main_stack);
-    root.set_child(Some(&main_box));
-    let mut widgets = AppWidgets {
-        window: root,
-        main_stack,
-        recipes_details,
-        recipes_list_box,
-        pantry_label: pantry_title.clone(),
-        pantry_list: pantry_list_container,
-        pantry_details: pantry_details_box,
-        pantry_in_stock_switch: stock_filter_switch,
-        kb_label: kb_label.clone(),
-        kb_list_box,
-        kb_details,
-        sidebar_buttons,
-        refresh_categories: None,
-        pantry_row_map: std::collections::HashMap::new(),
-    };
-    widgets.refresh_categories = refresh_categories;
-    relm4::ComponentParts { model, widgets }
+            AppMsg::SetTheme(theme_str) => {
+                let theme = match theme_str.as_str() {
+                    "Light" => Theme::Light,
+                    "Dark" => Theme::Dark,
+                    _ => Theme::System,
+                };
+                apply_theme(&theme);
+                let mut s = self.settings.borrow_mut();
+                s.theme = theme;
+                s.save();
+            }
+
+            // ── System ────────────────────────────────────────────────────────
+            AppMsg::ShowToast(msg) => {
+                log::info!("Toast: {}", msg);
+                // Actual toast shown in update_view
+            }
+            AppMsg::ReloadAll => {
+                if let Ok(new_dm) = DataManager::new(&self.data_dir) {
+                    self.dm = Some(Rc::new(RefCell::new(new_dm)));
+                }
+                self.recipes_dirty.set(true);
+                self.pantry_dirty.set(true);
+                self.kb_dirty.set(true);
+            }
+        }
+    }
+
+    // ── Update view (UI sync from model state) ────────────────────────────────
+
+    fn update_view(&self, widgets: &mut AppWidgets, sender: ComponentSender<Self>) {
+        // Switch the visible tab
+        let tab_name = match self.tab {
+            Tab::Recipes => "recipes",
+            Tab::Pantry => "pantry",
+            Tab::Kb => "kb",
+            Tab::Settings => "settings",
+        };
+        widgets.main_stack.set_visible_child_name(tab_name);
+
+        // Rebuild recipe list if dirty
+        if self.recipes_dirty.get() {
+            crate::recipes::populate_recipe_list(
+                &widgets.recipe_list,
+                &self.dm,
+                &self.recipe_search,
+                &sender,
+            );
+            self.recipes_dirty.set(false);
+            // Re-select if there is a selection
+            if let Some(ref title) = self.selected_recipe {
+                select_row_by_name(&widgets.recipe_list, title);
+            }
+        }
+
+        // Update recipe detail if dirty or tab changed
+        if self.recipe_detail_dirty.get() || self.tab == Tab::Recipes {
+            if let Some(ref title) = self.selected_recipe {
+                crate::recipes::update_recipe_detail(
+                    &widgets.recipe_detail,
+                    &self.dm,
+                    title,
+                    &sender,
+                );
+            } else {
+                crate::recipes::show_recipe_placeholder(&widgets.recipe_detail);
+            }
+            self.recipe_detail_dirty.set(false);
+        }
+
+        // Rebuild pantry list if dirty
+        if self.pantry_dirty.get() {
+            crate::pantry::populate_pantry_list(
+                &widgets.pantry_list,
+                &self.dm,
+                &self.ingredient_search,
+                &self.category_filter,
+                self.in_stock_only,
+                &sender,
+            );
+            // Sync in-stock switch
+            if widgets.in_stock_switch.is_active() != self.in_stock_only {
+                widgets.in_stock_switch.set_active(self.in_stock_only);
+            }
+            self.pantry_dirty.set(false);
+            if let Some(ref name) = self.selected_ingredient {
+                select_row_by_name(&widgets.pantry_list, name);
+            }
+        }
+
+        // Update ingredient detail if dirty or tab changed
+        if self.ingredient_detail_dirty.get() || self.tab == Tab::Pantry {
+            if let Some(ref name) = self.selected_ingredient {
+                crate::pantry::update_ingredient_detail(
+                    &widgets.ingredient_detail,
+                    &self.dm,
+                    name,
+                    &sender,
+                );
+            } else {
+                crate::pantry::show_ingredient_placeholder(&widgets.ingredient_detail);
+            }
+            self.ingredient_detail_dirty.set(false);
+        }
+
+        // KB list rebuild
+        if self.kb_dirty.get() {
+            crate::kb::populate_kb_list(&widgets.kb_list, &self.dm, &sender);
+            self.kb_dirty.set(false);
+        }
+
+        // KB detail
+        if self.kb_detail_dirty.get() || self.tab == Tab::Kb {
+            if let Some(ref slug) = self.selected_kb {
+                crate::kb::update_kb_detail(&widgets.kb_detail, &self.dm, slug);
+            } else {
+                crate::kb::show_kb_placeholder(&widgets.kb_detail);
+            }
+            self.kb_detail_dirty.set(false);
+        }
+
+        // ── Open pending dialogs (need widget references for parent window) ───
+        if self.pending_add_recipe.get() {
+            self.pending_add_recipe.set(false);
+            open_add_recipe_dialog(&widgets.window, &self.dm, sender.clone());
+        }
+        if let Some(title) = self.pending_edit_recipe.borrow_mut().take() {
+            open_edit_recipe_dialog(&widgets.window, &self.dm, &title, sender.clone());
+        }
+        if self.pending_add_ingredient.get() {
+            self.pending_add_ingredient.set(false);
+            open_add_ingredient_dialog(&widgets.window, &self.dm, sender.clone());
+        }
+        if let Some(name) = self.pending_edit_ingredient.borrow_mut().take() {
+            open_edit_ingredient_dialog(&widgets.window, &self.dm, &name, sender.clone());
+        }
+    }
 }
 
-// Add debug breadcrumbs to build_ingredient_detail_view
-#[allow(dead_code)]
-pub fn build_ingredient_detail_view<C>(
-    data_manager: &Rc<DataManager>,
-    ingredient_id: &str, // now this is always a slug
-    sender: &ComponentSender<C>,
-    switch_tab_msg: impl Fn(crate::types::Tab) -> C::Input + Clone + 'static,
-    select_kb_entry_msg: impl Fn(String) -> C::Input + Clone + 'static,
-    select_recipe_msg: impl Fn(String) -> C::Input + Clone + 'static,
-    edit_ingredient_msg: impl Fn(String) -> C::Input + Clone + 'static,
-) -> gtk::Box
-where
-    C: relm4::Component,
-{
-    log::debug!(
-        "build_ingredient_detail_view - called with ingredient_id={:?}",
-        ingredient_id
-    );
-    // Create a small details view
-    let details_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
-    details_container.set_margin_all(DEFAULT_MARGIN);
-    let lang = data_manager
-        .get_all_ingredients()
-        .first()
-        .and_then(|_| Some("en")) // fallback if needed
-        .unwrap_or("en");
-    // Try to resolve by slug or translation
-    let ingredient = data_manager.find_ingredient_by_name_or_translation(ingredient_id, lang);
-    log::debug!("build_ingredient_detail_view - find_ingredient_by_name_or_translation returned: {:?}", ingredient);
-    if let Some(ingredient) = ingredient {
-        log::debug!(
-            "build_ingredient_detail_view - Found ingredient: {:?}",
-            ingredient.name
-        );
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Select the list box row whose widget name matches `name`.
+fn select_row_by_name(list: &gtk::ListBox, name: &str) {
+    let mut i = 0;
+    while let Some(row) = list.row_at_index(i) {
+        if row.widget_name().as_str() == name {
+            list.select_row(Some(&row));
+            return;
+        }
+        i += 1;
+    }
+}
+
+/// Apply the chosen theme via the libadwaita style manager.
+pub fn apply_theme(theme: &Theme) {
+    let mgr = adw::StyleManager::default();
+    let scheme = match theme {
+        Theme::Light => adw::ColorScheme::ForceLight,
+        Theme::Dark => adw::ColorScheme::ForceDark,
+        Theme::System => adw::ColorScheme::Default,
+    };
+    mgr.set_color_scheme(scheme);
+}
+
+// ── Dialog helpers called from the App ───────────────────────────────────────
+// (These live here rather than in update() because they need widget references
+// to find the parent window.)
+
+pub fn open_add_recipe_dialog(window: &adw::ApplicationWindow, dm: &Option<Rc<RefCell<DataManager>>>, sender: ComponentSender<App>) {
+    let names = dm
+        .as_ref()
+        .map(|d| {
+            d.borrow()
+                .get_all_ingredients()
+                .into_iter()
+                .map(|i| i.name.clone())
+                .collect()
+        })
+        .unwrap_or_default();
+    crate::dialogs::show_recipe_dialog(window, names, None, sender);
+}
+
+pub fn open_edit_recipe_dialog(
+    window: &adw::ApplicationWindow,
+    dm: &Option<Rc<RefCell<DataManager>>>,
+    title: &str,
+    sender: ComponentSender<App>,
+) {
+    let dm_borrow;
+    let recipe = if let Some(d) = dm {
+        dm_borrow = d.borrow();
+        dm_borrow.get_recipe(title).cloned()
     } else {
-        log::debug!(
-            "build_ingredient_detail_view - Ingredient not found for id={:?}",
-            ingredient_id
+        None
+    };
+    if let Some(ref recipe) = recipe {
+        let names = dm
+            .as_ref()
+            .map(|d| {
+                d.borrow()
+                    .get_all_ingredients()
+                    .into_iter()
+                    .map(|i| i.name.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        crate::dialogs::show_recipe_dialog(window, names, Some(recipe), sender);
+    }
+}
+
+pub fn open_add_ingredient_dialog(
+    window: &adw::ApplicationWindow,
+    dm: &Option<Rc<RefCell<DataManager>>>,
+    sender: ComponentSender<App>,
+) {
+    let categories = dm
+        .as_ref()
+        .map(|d| d.borrow().get_all_ingredient_categories())
+        .unwrap_or_default();
+    crate::dialogs::show_ingredient_dialog(window, categories, None, None, sender);
+}
+
+pub fn open_edit_ingredient_dialog(
+    window: &adw::ApplicationWindow,
+    dm: &Option<Rc<RefCell<DataManager>>>,
+    name: &str,
+    sender: ComponentSender<App>,
+) {
+    let dm_borrow;
+    let (ingredient, pantry_item) = if let Some(d) = dm {
+        dm_borrow = d.borrow();
+        let ing = dm_borrow.get_ingredient(name).cloned();
+        let pantry = dm_borrow.get_pantry_item(name).cloned();
+        (ing, pantry)
+    } else {
+        (None, None)
+    };
+    if let Some(ref ingredient) = ingredient {
+        let categories = dm
+            .as_ref()
+            .map(|d| d.borrow().get_all_ingredient_categories())
+            .unwrap_or_default();
+        crate::dialogs::show_ingredient_dialog(
+            window,
+            categories,
+            Some(ingredient),
+            pantry_item.as_ref(),
+            sender,
         );
     }
-    details_container
 }

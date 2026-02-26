@@ -1,8 +1,12 @@
-// Unit and integration tests for app.rs
+// Integration tests for the App component.
+// Most tests require a GTK display — run with `./dev.sh gtk-test-headless`.
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use cookbook_gtk::types::{AppModel, Tab};
-    // AppModel does not implement Default, so we cannot construct it directly here.
-    // These tests should be moved to unit tests inside src/ if needed.
+    #[test]
+    fn app_module_compiles() {
+        // Smoke test: the module is accessible and core types are importable.
+        let _: fn() = || {
+            let _ = std::mem::size_of::<cookbook_gtk::app::Tab>();
+        };
+    }
 }

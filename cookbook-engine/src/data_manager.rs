@@ -871,6 +871,41 @@ impl DataManager {
         }
     }
 
+    /// Creates a new recipe and writes it to the recipes directory
+    pub fn create_recipe(&mut self, recipe: Recipe) -> Result<(), CookbookError> {
+        if self.recipes.iter().any(|r| r.title == recipe.title) {
+            return Err(CookbookError::UpdateError(format!(
+                "create_recipe: Recipe '{}' already exists",
+                recipe.title
+            )));
+        }
+        let recipes_dir = self.data_dir.join("recipes");
+        let path = recipes_dir.join(format!("{}.md", recipe.title.replace(' ', "_")));
+        recipe.to_file(&path)?;
+        self.recipes.push(recipe);
+        Ok(())
+    }
+
+    /// Deletes a recipe by title and removes its file
+    pub fn delete_recipe(&mut self, title: &str) -> Result<bool, CookbookError> {
+        let original_len = self.recipes.len();
+        self.recipes.retain(|r| r.title != title);
+        if self.recipes.len() == original_len {
+            return Err(CookbookError::UpdateError(format!(
+                "delete_recipe: Recipe '{}' does not exist",
+                title
+            )));
+        }
+        let recipes_dir = self.data_dir.join("recipes");
+        let path = recipes_dir.join(format!("{}.md", title.replace(' ', "_")));
+        if path.exists() {
+            fs::remove_file(&path).map_err(|e| {
+                CookbookError::WriteError(format!("Failed to remove recipe file: {}", e))
+            })?;
+        }
+        Ok(true)
+    }
+
     /// Creates a new ingredient and writes it to the ingredients directory
     pub fn create_ingredient(&mut self, ingredient: Ingredient) -> Result<(), CookbookError> {
         if self.ingredients.contains_key(&ingredient.name) {

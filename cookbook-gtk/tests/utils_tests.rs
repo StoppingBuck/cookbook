@@ -1,24 +1,26 @@
-// Unit tests for utils.rs
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_validate_and_create_data_dir() {
-        let data_dir = "/tmp/cookbook-data-test";
-        cookbook_gtk::utils::validate_and_create_data_dir(data_dir);
-        assert!(std::path::Path::new(data_dir).exists());
-        // Cleanup
-        let _ = std::fs::remove_dir_all(data_dir);
-    }
+use std::path::Path;
+use tempfile::tempdir;
 
-    #[test]
-    fn test_validate_and_create_data_dir_existing() {
-        // Test with a directory that already exists
-        let data_dir = "/tmp/cookbook-data-test-existing";
-        std::fs::create_dir_all(data_dir).unwrap();
-        // Should not panic or fail when dir already exists
-        cookbook_gtk::utils::validate_and_create_data_dir(data_dir);
-        assert!(std::path::Path::new(data_dir).exists());
-        // Cleanup
-        let _ = std::fs::remove_dir_all(data_dir);
-    }
+#[test]
+fn validate_and_create_data_dir_creates_structure() {
+    let tmp = tempdir().unwrap();
+    let dir = tmp.path().join("new_data");
+
+    cookbook_gtk::utils::validate_and_create_data_dir(&dir);
+
+    assert!(dir.join("ingredients").exists(), "ingredients/ missing");
+    assert!(dir.join("recipes").exists(), "recipes/ missing");
+    assert!(dir.join("pantry.yaml").exists(), "pantry.yaml missing");
+}
+
+#[test]
+fn validate_and_create_data_dir_is_idempotent() {
+    let tmp = tempdir().unwrap();
+    let dir = tmp.path().join("data");
+
+    cookbook_gtk::utils::validate_and_create_data_dir(&dir);
+    // Second call must not panic or overwrite existing files.
+    cookbook_gtk::utils::validate_and_create_data_dir(&dir);
+
+    assert!(Path::new(&dir.join("pantry.yaml")).exists());
 }

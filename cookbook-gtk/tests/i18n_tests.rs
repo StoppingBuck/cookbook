@@ -1,18 +1,7 @@
-// Unit tests for i18n.rs
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn test_set_language() {
-        let lang = "fr";
-        cookbook_gtk::i18n::set_language(lang);
-        assert_eq!(lang, "fr");
-    }
+// i18n module was removed in the rewrite.
+// Internationalisation is not yet re-implemented.
 
-    #[test]
-    fn test_language_fallback() {
-        let lang = "zz";
-        cookbook_gtk::i18n::set_language(lang);
-        assert_eq!(lang, "zz");
-    }
+#[test]
+fn placeholder() {
+    // No i18n module — nothing to test yet.
 }

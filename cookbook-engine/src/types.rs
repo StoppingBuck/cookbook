@@ -68,7 +68,7 @@ impl Recipe {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PantryItem {
     pub ingredient: String, //#TODO Should it perhaps be an Ingredient?
     pub quantity: Option<f64>,

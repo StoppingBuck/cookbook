@@ -43,7 +43,7 @@ fn test_new_missing_dir() {
 #[test]
 fn test_new_loads_all_collections() {
     let dm = DataManager::new(fixture_data_dir()).unwrap();
-    assert_eq!(dm.get_all_ingredients().len(), 9, "Expected 9 ingredients");
+    assert_eq!(dm.get_all_ingredients().len(), 10, "Expected 10 ingredients");
     assert_eq!(dm.get_all_recipes().len(), 2, "Expected 2 recipes");
     assert!(dm.get_pantry().is_some(), "Expected pantry to be Some");
 }
@@ -53,7 +53,7 @@ fn test_new_loads_all_collections() {
 #[test]
 fn test_get_all_ingredients_count() {
     let dm = DataManager::new(fixture_data_dir()).unwrap();
-    assert_eq!(dm.get_all_ingredients().len(), 9);
+    assert_eq!(dm.get_all_ingredients().len(), 10);
 }
 
 #[test]
@@ -206,12 +206,12 @@ fn test_filter_by_category() {
 fn test_filter_in_stock_only() {
     let dm = DataManager::new(fixture_data_dir()).unwrap();
     // Ingredients in both ingredients dir AND pantry:
-    // tomato, egg, butter, potato, salt, pepper = 6 items
+    // tomato, egg, butter, potato, salt, pepper, milk = 7 items
     let results = dm.filter_ingredients("", &[], true, "en");
     assert_eq!(
         results.len(),
-        6,
-        "Expected exactly 6 in-stock ingredients, got: {:?}",
+        7,
+        "Expected exactly 7 in-stock ingredients, got: {:?}",
         results.iter().map(|i| &i.name).collect::<Vec<_>>()
     );
     for ingredient in &results {

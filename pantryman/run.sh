@@ -1,4 +1,5 @@
 #!/bin/bash
 
 # Quick pantryman development script - calls the main script from project root
-/home/mpr/code/cookbook/run-pantryman.sh "$@"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$SCRIPT_DIR/../dev.sh" android "$@"

@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 
 
 # Configuration
-PROJECT_ROOT="/home/mpr/code/cookbook"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PANTRYMAN_DIR="$PROJECT_ROOT/pantryman"
 APP_PACKAGE="com.example.pantryman"
 # Use Windows adb.exe if available (for WSL/Arch)

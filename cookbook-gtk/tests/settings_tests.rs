@@ -1,16 +1,5 @@
-// Unit tests for settings.rs
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn test_settings_tab_build() {
-        let tab_name = "Settings";
-        assert_eq!(tab_name, "Settings");
-    }
+// Settings page requires a GTK display.
+// Configuration (UserSettings) is tested in user_settings_tests.rs.
 
-    #[test]
-    fn test_data_dir_logic() {
-        let data_dir = "/tmp/cookbook-data";
-        assert!(data_dir.starts_with("/tmp"));
-    }
-}
+#[test]
+fn placeholder() {}

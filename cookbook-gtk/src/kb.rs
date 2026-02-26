@@ -1,492 +1,223 @@
+/// Knowledge Base tab: lists KB articles and shows their content.
+use crate::app::{App, AppMsg};
+use crate::ui_constants::*;
 use cookbook_engine::DataManager;
-use gtk::prelude::*;
-use regex::Regex;
+use libadwaita as adw;
 use relm4::gtk;
-use relm4::gtk::glib;
-use relm4::ComponentSender;
-use relm4::RelmWidgetExt;
+use relm4::{gtk::prelude::*, ComponentSender, RelmWidgetExt};
+use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::types::AppModel;
-use crate::types::AppMsg;
-use crate::ui_constants::*;
-use crate::utils;
-
-/// Updates the KB entry list based on search text and other filters
-pub fn update_kb_list<C>(
-    kb_list_box: &gtk::ListBox,
-    data_manager: &Option<Rc<DataManager>>,
-    sender: &ComponentSender<C>,
-    select_kb_entry_msg: impl Fn(String) -> C::Input + Clone + 'static,
-) where
-    C: relm4::Component,
-{
-    // Clear the KB list
-    utils::clear_list_box(&kb_list_box);
-
-    if let Some(ref dm) = data_manager {
-        let entries = dm.get_all_kb_entries();
-        if !entries.is_empty() {
-            // Sort entries by title for better usability
-            let mut sorted_entries = entries.clone();
-            sorted_entries.sort_by(|a, b| a.title.cmp(&b.title));
-
-            for entry in sorted_entries {
-                let row = gtk::ListBoxRow::new();
-                let title_label = gtk::Label::new(Some(&entry.title));
-                title_label.set_halign(gtk::Align::Start);
-                title_label.set_margin_start(5);
-                title_label.set_margin_end(5);
-                title_label.set_margin_top(5);
-                title_label.set_margin_bottom(LIST_ROW_MARGIN);
-                row.set_child(Some(&title_label));
-
-                kb_list_box.append(&row);
-
-                // Store the slug in the row's data to make retrieval easier
-                row.set_widget_name(&entry.slug);
-            }
-
-            // Set up row selection handler
-            let sender_clone = sender.clone();
-            let select_msg = select_kb_entry_msg.clone();
-            kb_list_box.connect_row_selected(move |_, row_opt| {
-                if let Some(row) = row_opt {
-                    let slug = row.widget_name().to_string();
-                    sender_clone.input(select_msg(slug));
-                }
-            });
-        } else {
-            let no_entries_row = gtk::ListBoxRow::new();
-            let no_entries_label = gtk::Label::new(Some("No KB entries available"));
-            no_entries_label.set_margin_all(DEFAULT_MARGIN);
-            no_entries_row.set_child(Some(&no_entries_label));
-            kb_list_box.append(&no_entries_row);
-        }
-    } else {
-        let no_data_row = gtk::ListBoxRow::new();
-        let no_data_label = gtk::Label::new(Some("Failed to load KB data"));
-        no_data_label.set_margin_all(DEFAULT_MARGIN);
-        no_data_row.set_child(Some(&no_data_label));
-        kb_list_box.append(&no_data_row);
-    }
-}
-
-/// Converts a subset of Markdown to Pango markup for GTK labels.
-/// Supports headings, bold, italic, unordered lists, and links.
-pub fn markdown_to_pango(md: &str) -> String {
-    let mut out = String::new();
-    let bold_re = Regex::new(r"\*\*(.+?)\*\*");
-    let bold_re = match bold_re {
-        Ok(re) => re,
-        Err(_) => return String::from("[Markdown bold regex error]"),
-    };
-    let italic_re = Regex::new(r"\*(.+?)\*");
-    let italic_re = match italic_re {
-        Ok(re) => re,
-        Err(_) => return String::from("[Markdown italic regex error]"),
-    };
-    let link_re = Regex::new(r"\[(.+?)\]\((.+?)\)");
-    let link_re = match link_re {
-        Ok(re) => re,
-        Err(_) => return String::from("[Markdown link regex error]"),
-    };
-    let mut in_table = false;
-    for line in md.lines() {
-        let trimmed = line.trim();
-        // Debug: print each line and what the parser thinks it is
-        //println!("[KB DEBUG] markdown_to_pango: line='{}'", trimmed);
-        // Detect markdown table lines (start with | or contain only dashes and pipes)
-        let is_table_line =
-            trimmed.starts_with('|') || (trimmed.chars().all(|c| c == '|' || c == '-' || c == ' '));
-        if is_table_line {
-            //println!("[KB DEBUG] Detected table line: {}", trimmed);
-            if !in_table {
-                out.push_str("<span font_family='monospace'>");
-                in_table = true;
-            }
-            // Escape XML special chars for Pango
-            let safe = glib::markup_escape_text(trimmed);
-            out.push_str(&safe);
-            out.push('\n');
-            continue;
-        } else if in_table {
-            out.push_str("</span>\n");
-            in_table = false;
-        }
-        let mut pango_line = String::new();
-        // Headings
-        if trimmed.starts_with("### ") {
-            let safe = glib::markup_escape_text(&trimmed[4..]);
-            //println!("[KB DEBUG] Detected h3: {}", &safe);
-            pango_line.push_str(&format!("<span size='large' weight='bold'>{}</span>", safe));
-        } else if trimmed.starts_with("## ") {
-            let safe = glib::markup_escape_text(&trimmed[3..]);
-            //println!("[KB DEBUG] Detected h2: {}", &safe);
-            pango_line.push_str(&format!(
-                "<span size='x-large' weight='bold'>{}</span>",
-                safe
-            ));
-        } else if trimmed.starts_with("# ") {
-            let safe = glib::markup_escape_text(&trimmed[2..]);
-            //println!("[KB DEBUG] Detected h1: {}", &safe);
-            pango_line.push_str(&format!(
-                "<span size='xx-large' weight='bold'>{}</span>",
-                safe
-            ));
-        } else if trimmed.starts_with("* ") || trimmed.starts_with("- ") {
-            let safe = glib::markup_escape_text(&trimmed[2..]);
-            //println!("[KB DEBUG] Detected list item: {}", &safe);
-            pango_line.push_str(&format!("• {}", safe));
-        } else {
-            let safe = glib::markup_escape_text(trimmed);
-            pango_line.push_str(&safe);
-        }
-        // Inline: links, bold, italic (order: links -> bold -> italic)
-        let pango_line = link_re.replace_all(&pango_line, |caps: &regex::Captures| {
-            // Escape link text and URL
-            let text = glib::markup_escape_text(&caps[1]);
-            let url = glib::markup_escape_text(&caps[2]);
-            format!("<u>{}</u> ({})", text, url)
-        });
-        let pango_line = bold_re.replace_all(&pango_line, |caps: &regex::Captures| {
-            let text = glib::markup_escape_text(&caps[1]);
-            format!("<b>{}</b>", text)
-        });
-        let pango_line = italic_re.replace_all(&pango_line, |caps: &regex::Captures| {
-            // Avoid matching inside bold
-            if caps[1].contains("<b>") {
-                caps[0].to_string()
-            } else {
-                let text = glib::markup_escape_text(&caps[1]);
-                format!("<i>{}</i>", text)
-            }
-        });
-        out.push_str(&pango_line);
-        out.push('\n');
-    }
-    if in_table {
-        out.push_str("</span>\n");
-    }
-    out.trim().to_string()
-}
-
-pub fn build_kb_detail_view(data_manager: &Rc<DataManager>, kb_slug: &str) -> gtk::ScrolledWindow {
-    let kb_details_scroll = gtk::ScrolledWindow::new();
-    kb_details_scroll.set_hexpand(true);
-    kb_details_scroll.set_vexpand(true); // Allow vertical expansion
-
-    // Find the selected KB entry
-    if let Some(kb_entry) = data_manager.get_kb_entry(kb_slug) {
-        let details_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
-        details_container.set_margin_all(DEFAULT_MARGIN);
-        details_container.set_vexpand(true); // Allow vertical expansion
-
-        // Title
-        let title = gtk::Label::new(None);
-        title.set_markup(&format!(
-            "<span size='x-large' weight='bold'>{}</span>",
-            kb_entry.title
-        ));
-        title.set_halign(gtk::Align::Start);
-        title.set_margin_bottom(DEFAULT_MARGIN);
-        details_container.append(&title);
-
-        // Image (if available)
-        if let Some(image_name) = &kb_entry.image {
-            if let Some(image_path) = data_manager.get_kb_image_path(image_name) {
-                if image_path.exists() {
-                    match gtk::gdk_pixbuf::Pixbuf::from_file(&image_path) {
-                        Ok(pixbuf) => {
-                            let aspect = pixbuf.width() as f32 / pixbuf.height() as f32;
-                            let image = gtk::Image::from_pixbuf(Some(&pixbuf));
-                            image.set_hexpand(true);
-                            // Don't expand vertically, use fixed sizing instead
-                            image.set_vexpand(false);
-
-                            // Use GtkAspectFrame to make the image scale with the window, preserving aspect ratio
-                            let aspect_frame = gtk::AspectFrame::new(0.5, 0.0, aspect, false);
-                            aspect_frame.set_hexpand(true);
-                            // Don't expand vertically, use fixed sizing instead
-                            aspect_frame.set_vexpand(false);
-                            aspect_frame.set_halign(gtk::Align::Fill);
-                            aspect_frame.set_valign(gtk::Align::Start); // Align to top
-
-                            // Set minimum height to ensure image is visible
-                            aspect_frame.set_size_request(-1, 300); // width: -1 means "natural width", height: 300px minimum
-
-                            aspect_frame.set_child(Some(&image));
-                            aspect_frame.set_margin_bottom(HEADER_MARGIN);
-                            details_container.append(&aspect_frame);
-
-                            // Print debug widget sizes only once using RefCell<bool>
-                            use std::cell::RefCell;
-                            let printed = std::rc::Rc::new(RefCell::new(false));
-                            let details_container_clone = details_container.clone();
-                            let aspect_frame_clone = aspect_frame.clone();
-                            let image_clone = image.clone();
-                            let printed_clone = printed.clone();
-                            aspect_frame.add_tick_callback(move |_, _| {
-                                let mut printed = printed_clone.borrow_mut();
-                                if !*printed {
-                                    let cont_alloc = details_container_clone.allocation();
-                                    let alloc = aspect_frame_clone.allocation();
-                                    let img_alloc = image_clone.allocation();
-                                    let window = aspect_frame_clone.root();
-                                    let (win_w, win_h) = if let Some(window) = window.and_downcast::<gtk::Window>() {
-                                        let alloc = window.allocation();
-                                        (alloc.width(), alloc.height())
-                                    } else { (0, 0) };
-                                    // Only print if all allocations are nonzero
-                                    if win_w > 0 && win_h > 0 && cont_alloc.width() > 0 && cont_alloc.height() > 0 && alloc.width() > 0 && alloc.height() > 0 && img_alloc.width() > 0 && img_alloc.height() > 0 {
-                                        log::debug!("Window size: {}x{} | details_container: {}x{} | aspect_frame: {}x{} | image: {}x{}", win_w, win_h, cont_alloc.width(), cont_alloc.height(), alloc.width(), alloc.height(), img_alloc.width(), img_alloc.height());
-                                        *printed = true;
-                                        return glib::ControlFlow::Break;
-                                    }
-                                }
-                                glib::ControlFlow::Continue
-                            });
-                        }
-                        Err(_) => {
-                            let missing_label = gtk::Label::new(Some("Image not available"));
-                            missing_label.set_halign(gtk::Align::Center);
-                            missing_label.set_margin_bottom(HEADER_MARGIN);
-                            details_container.append(&missing_label);
-                        }
-                    }
-                } else {
-                    let missing_label = gtk::Label::new(Some("Image not available"));
-                    missing_label.set_halign(gtk::Align::Center);
-                    missing_label.set_margin_bottom(HEADER_MARGIN);
-                    details_container.append(&missing_label);
-                }
-            } else {
-                let missing_label = gtk::Label::new(Some("Image not available"));
-                missing_label.set_halign(gtk::Align::Center);
-                missing_label.set_margin_bottom(HEADER_MARGIN);
-                details_container.append(&missing_label);
-            }
-        }
-
-        // Related ingredients section (if any)
-        let related_ingredients = data_manager.get_ingredients_with_kb_reference(kb_slug);
-        if !related_ingredients.is_empty() {
-            let related_label = gtk::Label::new(None);
-            related_label.set_markup("<span weight='bold'>Related Ingredients:</span>");
-            related_label.set_halign(gtk::Align::Start);
-            related_label.set_margin_top(LIST_ROW_MARGIN);
-            related_label.set_margin_bottom(LIST_ROW_MARGIN);
-            details_container.append(&related_label);
-
-            let ingredients_box = gtk::Box::new(gtk::Orientation::Horizontal, TAG_SPACING);
-            ingredients_box.set_margin_start(DEFAULT_MARGIN);
-            ingredients_box.set_margin_bottom(DEFAULT_MARGIN);
-
-            for ingredient in related_ingredients {
-                let ingredient_chip = gtk::Button::with_label(&ingredient.name);
-                ingredient_chip.add_css_class("tag");
-                ingredients_box.append(&ingredient_chip);
-            }
-
-            details_container.append(&ingredients_box);
-            details_container.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-        }
-
-        // Content (rendered as markdown to pango)
-        let pango_markup = markdown_to_pango(&kb_entry.content);
-        let content_text = gtk::Label::new(None);
-        // Heuristic: fallback to plain text if markup looks broken
-        let open_spans = pango_markup.matches("<span").count();
-        let close_spans = pango_markup.matches("</span>").count();
-        if open_spans == close_spans && !pango_markup.contains("</span>\n\n</span>") {
-            content_text.set_markup(&pango_markup);
-        } else {
-            content_text.set_text(&kb_entry.content);
-        }
-        content_text.set_halign(gtk::Align::Start);
-        content_text.set_wrap(true);
-        content_text.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-        content_text.set_xalign(0.0);
-        content_text.set_margin_top(DEFAULT_MARGIN);
-        details_container.append(&content_text);
-
-        kb_details_scroll.set_child(Some(&details_container));
-    } else {
-        // KB entry not found
-        let not_found_label = gtk::Label::new(Some(&format!(
-            "Knowledge Base entry '{}' not found",
-            kb_slug
-        )));
-        not_found_label.set_halign(gtk::Align::Center);
-        not_found_label.set_valign(gtk::Align::Center);
-        kb_details_scroll.set_child(Some(&not_found_label));
-    }
-
-    kb_details_scroll
-}
-
-/// Updates the KB details view with the selected entry
-pub fn update_kb_details<C>(
-    kb_details: &gtk::Box,
-    data_manager: &Option<Rc<DataManager>>,
-    kb_slug: &str,
-) where
-    C: relm4::Component,
-{
-    // Clear previous content
-    utils::clear_box(kb_details);
-
-    if let Some(ref dm) = data_manager {
-        let kb_details_scroll = build_kb_detail_view(dm, kb_slug);
-        kb_details.append(&kb_details_scroll);
-    } else {
-        // Data manager not available
-        let error_label =
-            gtk::Label::new(Some("Unable to load KB entry: data manager not available"));
-        error_label.set_halign(gtk::Align::Center);
-        error_label.set_valign(gtk::Align::Center);
-        kb_details.append(&error_label);
-    }
-}
-
-/// Shows a placeholder when no KB entry is selected
-pub fn show_kb_details_placeholder(kb_details: &gtk::Box) {
-    // Clear previous content
-    utils::clear_box(&kb_details);
-
-    let select_label = gtk::Label::new(Some("Select an item to view details"));
-    select_label.set_halign(gtk::Align::Center);
-    select_label.set_valign(gtk::Align::Center);
-    kb_details.append(&select_label);
-}
-
-/// Helper function to select the correct KB entry in the list box
-#[allow(dead_code)]
-pub fn select_kb_entry_in_list(kb_list_box: &gtk::ListBox, kb_slug: &str) {
-    // First try to find by widget name (which should contain the slug)
-    let mut i = 0;
-    while let Some(row) = kb_list_box.row_at_index(i) {
-        i += 1;
-        if row.widget_name() == kb_slug {
-            kb_list_box.select_row(Some(&row));
-            return;
-        }
-    }
-
-    // If that fails, try with the label text (backward compatibility)
-    i = 0;
-    while let Some(row) = kb_list_box.row_at_index(i) {
-        i += 1;
-        if let Some(child) = row.child() {
-            if let Some(label) = child.downcast_ref::<gtk::Label>() {
-                if label.text() == kb_slug {
-                    kb_list_box.select_row(Some(&row));
-                    return;
-                }
-            }
-        }
-    }
-}
-
+/// Build the full Knowledge Base tab widget.
+///
+/// Returns `(tab_widget, kb_list_box, kb_detail_box)`.
 pub fn build_kb_tab(
-    model: &AppModel,
-    sender: Option<ComponentSender<AppModel>>,
-) -> (gtk::Box, gtk::ListBox, gtk::Box, gtk::Label) {
-    // Knowledge Base Tab UI Structure:
-    // - KB List Pane (middle): shows all KB entries
-    // - KB Details Pane (right): shows details for selected KB entry
-    // - Navigation Pane (left): handled by main app sidebar, not here
-    // The panes are uncoupled except:
-    //   - Selecting a KB entry in the List Pane updates the Details Pane
-    //   - Changing tab in Navigation triggers List Pane update
+    dm: &Option<Rc<RefCell<DataManager>>>,
+    sender: ComponentSender<App>,
+) -> (gtk::Widget, gtk::ListBox, gtk::Box) {
+    let paned = gtk::Paned::new(gtk::Orientation::Horizontal);
+    paned.set_hexpand(true);
+    paned.set_vexpand(true);
+    paned.set_position(LIST_PANE_WIDTH);
 
-    // Main container for the KB tab
-    let kb_container = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
+    // ── Left: article list ────────────────────────────────────────────────────
+    let left = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    left.set_width_request(200);
+
+    let search = gtk::SearchEntry::new();
+    search.set_placeholder_text(Some("Search articles…"));
+    search.set_margin_top(DEFAULT_MARGIN);
+    search.set_margin_bottom(DEFAULT_MARGIN);
+    search.set_margin_start(DEFAULT_MARGIN);
+    search.set_margin_end(DEFAULT_MARGIN);
+    left.append(&search);
+
+    let list_scroll = gtk::ScrolledWindow::new();
+    list_scroll.set_vexpand(true);
+    list_scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+
+    let kb_list = gtk::ListBox::new();
+    kb_list.set_selection_mode(gtk::SelectionMode::Single);
+    kb_list.add_css_class("navigation-sidebar");
+    list_scroll.set_child(Some(&kb_list));
+    left.append(&list_scroll);
+
+    // ── Right: article detail ─────────────────────────────────────────────────
+    let detail_scroll = gtk::ScrolledWindow::new();
+    detail_scroll.set_hexpand(true);
+    detail_scroll.set_vexpand(true);
+    detail_scroll.set_policy(gtk::PolicyType::Automatic, gtk::PolicyType::Automatic);
+
+    let kb_detail = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
+    kb_detail.set_margin_all(DEFAULT_MARGIN);
+    detail_scroll.set_child(Some(&kb_detail));
+
+    show_kb_placeholder(&kb_detail);
+
+    paned.set_start_child(Some(&left));
+    paned.set_end_child(Some(&detail_scroll));
+
+    // Populate initial list
+    populate_kb_list(&kb_list, dm, &sender);
+
+    // Search filter
+    {
+        let kb_list_clone = kb_list.clone();
+        let dm_clone = dm.clone();
+        let sender_search = sender.clone();
+        search.connect_search_changed(move |entry| {
+            let query = entry.text().to_string().to_lowercase();
+            crate::utils::clear_list_box(&kb_list_clone);
+            populate_kb_list_filtered(&kb_list_clone, &dm_clone, &query, &sender_search);
+        });
+    }
+
+    // Row selection
+    {
+        let sender_select = sender.clone();
+        kb_list.connect_row_selected(move |_, row| {
+            if let Some(row) = row {
+                let slug = row.widget_name().to_string();
+                if !slug.is_empty() {
+                    sender_select.input(AppMsg::SelectKb(Some(slug)));
+                }
+            }
+        });
+    }
+
+    (paned.upcast(), kb_list, kb_detail)
+}
+
+/// Populate the KB list box with all articles (no filter).
+pub fn populate_kb_list(
+    list: &gtk::ListBox,
+    dm: &Option<Rc<RefCell<DataManager>>>,
+    sender: &ComponentSender<App>,
+) {
+    populate_kb_list_filtered(list, dm, "", sender);
+}
+
+fn populate_kb_list_filtered(
+    list: &gtk::ListBox,
+    dm: &Option<Rc<RefCell<DataManager>>>,
+    query: &str,
+    _sender: &ComponentSender<App>,
+) {
+    crate::utils::clear_list_box(list);
+
+    let Some(dm) = dm else {
+        let row = empty_state_row("No data loaded");
+        list.append(&row);
+        return;
+    };
+
+    let dm = dm.borrow();
+    let mut entries: Vec<_> = dm.get_all_kb_entries().into_iter().collect();
+    entries.sort_by(|a, b| a.title.cmp(&b.title));
+
+    let filtered: Vec<_> = entries
+        .iter()
+        .filter(|e| {
+            query.is_empty()
+                || e.title.to_lowercase().contains(query)
+                || e.slug.to_lowercase().contains(query)
+        })
+        .collect();
+
+    if filtered.is_empty() {
+        let row = empty_state_row("No articles found");
+        list.append(&row);
+        return;
+    }
+
+    for entry in filtered {
+        let row = gtk::ListBoxRow::new();
+        row.set_widget_name(&entry.slug);
+        let label = gtk::Label::new(Some(&entry.title));
+        label.set_halign(gtk::Align::Start);
+        label.set_margin_top(ROW_SPACING);
+        label.set_margin_bottom(ROW_SPACING);
+        label.set_margin_start(DEFAULT_MARGIN);
+        label.set_margin_end(DEFAULT_MARGIN);
+        row.set_child(Some(&label));
+        list.append(&row);
+    }
+}
+
+/// Update the KB detail panel for the selected article slug.
+pub fn update_kb_detail(
+    detail: &gtk::Box,
+    dm: &Option<Rc<RefCell<DataManager>>>,
+    slug: &str,
+) {
+    crate::utils::clear_box(detail);
+
+    let Some(dm) = dm else {
+        show_kb_placeholder(detail);
+        return;
+    };
+
+    let dm = dm.borrow();
+    let Some(entry) = dm.get_kb_entry(slug) else {
+        show_kb_placeholder(detail);
+        return;
+    };
 
     // Title
-    let kb_title = gtk::Label::new(Some("Knowledge Base"));
-    kb_title.set_markup("<span size='x-large' weight='bold'>Knowledge Base</span>");
-    kb_title.set_halign(gtk::Align::Start);
-    kb_title.set_margin_all(DEFAULT_MARGIN);
-    kb_container.append(&kb_title);
+    let title = gtk::Label::new(Some(&entry.title));
+    title.add_css_class("title-1");
+    title.set_halign(gtk::Align::Start);
+    title.set_wrap(true);
+    detail.append(&title);
 
-    // Split view: KB List Pane (middle), KB Details Pane (right)
-    let kb_content = gtk::Box::new(gtk::Orientation::Horizontal, SECTION_SPACING);
-    kb_content.set_hexpand(true);
-    kb_content.set_vexpand(true);
+    detail.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
 
-    // KB List Pane
-    let kb_list_scroll = gtk::ScrolledWindow::new();
-    kb_list_scroll.set_hexpand(false);
-    kb_list_scroll.set_vexpand(true);
-    kb_list_scroll.set_min_content_width(250);
+    // Content as plain text
+    let content_label = gtk::Label::new(Some(&entry.content));
+    content_label.set_halign(gtk::Align::Start);
+    content_label.set_valign(gtk::Align::Start);
+    content_label.set_wrap(true);
+    content_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    content_label.set_selectable(true);
+    content_label.set_xalign(0.0);
+    detail.append(&content_label);
 
-    let kb_list_pane = gtk::ListBox::new();
-    kb_list_pane.set_selection_mode(gtk::SelectionMode::Single);
+    // Linked ingredients
+    let linked = dm.get_ingredients_with_kb_reference(slug);
+    if !linked.is_empty() {
+        detail.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        let header = gtk::Label::new(Some("Related ingredients"));
+        header.add_css_class("heading");
+        header.set_halign(gtk::Align::Start);
+        detail.append(&header);
 
-    // Populate the KB List Pane
-    if let Some(ref dm) = model.data_manager {
-        let entries = dm.get_all_kb_entries();
-        if !entries.is_empty() {
-            let mut sorted_entries = entries.clone();
-            sorted_entries.sort_by(|a, b| a.title.cmp(&b.title));
-            for entry in sorted_entries {
-                let row = gtk::ListBoxRow::new();
-                let title_label = gtk::Label::new(Some(&entry.title));
-                title_label.set_halign(gtk::Align::Start);
-                title_label.set_margin_start(LIST_ROW_MARGIN);
-                title_label.set_margin_end(LIST_ROW_MARGIN);
-                title_label.set_margin_top(LIST_ROW_MARGIN);
-                title_label.set_margin_bottom(LIST_ROW_MARGIN);
-                row.set_child(Some(&title_label));
-                // Store the slug in the row's widget name for retrieval
-                row.set_widget_name(&entry.slug);
-                kb_list_pane.append(&row);
-            }
-
-            // Selection handler for KB List Pane
-            let sender_clone = sender.clone();
-            kb_list_pane.connect_row_selected(move |_, row_opt| {
-                if let Some(row) = row_opt {
-                    let slug = row.widget_name().to_string();
-                    if let Some(sender) = &sender_clone {
-                        sender.input(AppMsg::SelectKnowledgeBaseEntry(slug));
-                    }
-                }
-            });
-        } else {
-            let no_entries_row = gtk::ListBoxRow::new();
-            let no_entries_label = gtk::Label::new(Some("No KB entries available"));
-            no_entries_label.set_margin_all(DEFAULT_MARGIN);
-            no_entries_row.set_child(Some(&no_entries_label));
-            kb_list_pane.append(&no_entries_row);
+        for ing in linked {
+            let label = gtk::Label::new(Some(&ing.name));
+            label.set_halign(gtk::Align::Start);
+            label.add_css_class("caption");
+            detail.append(&label);
         }
-    } else {
-        let no_data_row = gtk::ListBoxRow::new();
-        let no_data_label = gtk::Label::new(Some("Failed to load KB data"));
-        no_data_label.set_margin_all(DEFAULT_MARGIN);
-        no_data_row.set_child(Some(&no_data_label));
-        kb_list_pane.append(&no_data_row);
     }
+}
 
-    kb_list_scroll.set_child(Some(&kb_list_pane));
+pub fn show_kb_placeholder(detail: &gtk::Box) {
+    crate::utils::clear_box(detail);
+    let status = adw::StatusPage::new();
+    status.set_icon_name(Some("system-help-symbolic"));
+    status.set_title("Knowledge Base");
+    status.set_description(Some("Select an article from the list to read it."));
+    status.set_vexpand(true);
+    detail.append(&status);
+}
 
-    // KB Details Pane
-    let kb_details_pane = gtk::Box::new(gtk::Orientation::Vertical, SECTION_SPACING);
-    kb_details_pane.set_hexpand(true);
-    kb_details_pane.set_vexpand(true);
-
-    let select_label = gtk::Label::new(Some("Select a Knowledge Base entry to view details"));
-    select_label.set_halign(gtk::Align::Center);
-    select_label.set_valign(gtk::Align::Center);
-    select_label.set_hexpand(true);
-    select_label.set_vexpand(true);
-    kb_details_pane.append(&select_label);
-
-    kb_content.append(&kb_list_scroll);
-    kb_content.append(&kb_details_pane);
-
-    kb_container.append(&kb_content);
-
-    (kb_container, kb_list_pane, kb_details_pane, select_label)
+fn empty_state_row(text: &str) -> gtk::ListBoxRow {
+    let row = gtk::ListBoxRow::new();
+    row.set_activatable(false);
+    row.set_selectable(false);
+    let label = gtk::Label::new(Some(text));
+    label.add_css_class("dim-label");
+    label.set_margin_top(DEFAULT_MARGIN);
+    label.set_margin_bottom(DEFAULT_MARGIN);
+    row.set_child(Some(&label));
+    row
 }

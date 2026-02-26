@@ -1,14 +1,18 @@
-// Unit tests for types.rs
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use cookbook_gtk::types::{AppMsg, Tab};
-    #[test]
-    fn test_appmsg_enum() {
-        let msg = AppMsg::SwitchTab(Tab::Recipes);
-        match msg {
-            AppMsg::SwitchTab(tab) => assert_eq!(tab, Tab::Recipes),
-            _ => panic!("Wrong variant"),
-        }
+// Tests for app types (Tab, AppMsg).
+use cookbook_gtk::app::{AppMsg, Tab};
+
+#[test]
+fn tab_variants_are_distinct() {
+    assert_ne!(Tab::Recipes, Tab::Pantry);
+    assert_ne!(Tab::Pantry, Tab::Kb);
+    assert_ne!(Tab::Kb, Tab::Settings);
+}
+
+#[test]
+fn appmsg_switch_tab_roundtrip() {
+    let msg = AppMsg::SwitchTab(Tab::Recipes);
+    match msg {
+        AppMsg::SwitchTab(Tab::Recipes) => {}
+        _ => panic!("unexpected variant"),
     }
 }
