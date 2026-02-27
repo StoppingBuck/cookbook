@@ -1,4 +1,12 @@
-# Cookbook
+# Cookbook (archived)
+
+> **This repository has been archived.** Development has moved to three focused repos:
+>
+> - [janus-engine](https://github.com/StoppingBuck/janus-engine) — shared Rust engine
+> - [pantryman-linux](https://github.com/StoppingBuck/pantryman-linux) — GTK4 desktop app
+> - [pantryman-android](https://github.com/StoppingBuck/pantryman-android) — Android app
+
+---
 
 A cross-platform recipe and pantry manager built on the principle that **your data belongs to you**.
 
