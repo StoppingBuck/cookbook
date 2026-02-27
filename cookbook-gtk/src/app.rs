@@ -8,6 +8,7 @@ use relm4::{gtk::prelude::*, ComponentParts, ComponentSender, SimpleComponent};
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::mpsc;
 
 // ── Tab enum ──────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,7 @@ pub enum AppMsg {
 
     // Settings
     SetDataDir(String),
+    DataDirReady(String),
     SetTheme(String),
 
     // System
@@ -96,6 +98,9 @@ pub struct App {
     pub pending_edit_recipe: RefCell<Option<String>>,
     pub pending_add_ingredient: Cell<bool>,
     pub pending_edit_ingredient: RefCell<Option<String>>,
+
+    // Channel for receiving a DataManager loaded on a background thread
+    pub pending_dm: Option<mpsc::Receiver<Result<DataManager, String>>>,
 }
 
 // ── Widget references ─────────────────────────────────────────────────────────
@@ -147,14 +152,21 @@ impl SimpleComponent for App {
         let settings = UserSettings::load();
         let data_dir = UserSettings::effective_data_dir();
 
-        let dm: Option<Rc<RefCell<DataManager>>> =
-            DataManager::new(&data_dir)
-                .map(|m| Rc::new(RefCell::new(m)))
-                .map_err(|e| log::warn!("Could not load data: {}", e))
-                .ok();
+        // Load DataManager on a background thread so the window appears immediately
+        // even if the data directory is on a slow/network filesystem (e.g. pCloud FUSE).
+        let (tx, rx) = mpsc::channel();
+        let sender_startup = sender.clone();
+        let data_dir_startup = data_dir.clone();
+        std::thread::spawn(move || {
+            let result = DataManager::new(&data_dir_startup).map_err(|e| e.to_string());
+            let _ = tx.send(result);
+            sender_startup.input(AppMsg::DataDirReady(
+                data_dir_startup.display().to_string(),
+            ));
+        });
 
         let app_state = App {
-            dm: dm.clone(),
+            dm: None,
             data_dir: data_dir.clone(),
             settings: Rc::new(RefCell::new(settings.clone())),
             tab: Tab::Recipes,
@@ -175,6 +187,7 @@ impl SimpleComponent for App {
             pending_edit_recipe: RefCell::new(None),
             pending_add_ingredient: Cell::new(false),
             pending_edit_ingredient: RefCell::new(None),
+            pending_dm: Some(rx),
         };
 
         // ── Apply initial theme ───────────────────────────────────────────────
@@ -259,17 +272,17 @@ impl SimpleComponent for App {
 
         // Recipes tab
         let (recipes_widget, recipe_list, recipe_detail) =
-            crate::recipes::build_recipes_tab(&dm, sender.clone());
+            crate::recipes::build_recipes_tab(&None, sender.clone());
         main_stack.add_named(&recipes_widget, Some("recipes"));
 
         // Pantry tab
         let (pantry_widget, pantry_list, ingredient_detail, in_stock_switch) =
-            crate::pantry::build_pantry_tab(&dm, false, sender.clone());
+            crate::pantry::build_pantry_tab(&None, false, sender.clone());
         main_stack.add_named(&pantry_widget, Some("pantry"));
 
         // KB tab
         let (kb_widget, kb_list, kb_detail) =
-            crate::kb::build_kb_tab(&dm, sender.clone());
+            crate::kb::build_kb_tab(&None, sender.clone());
         main_stack.add_named(&kb_widget, Some("kb"));
 
         // Settings tab
@@ -463,20 +476,31 @@ impl SimpleComponent for App {
                 self.data_dir = path.clone();
                 {
                     let mut s = self.settings.borrow_mut();
-                    s.data_dir = Some(dir);
+                    s.data_dir = Some(dir.clone());
                     s.save();
                 }
-                // Reload data manager
-                match DataManager::new(&path) {
-                    Ok(new_dm) => {
+                // Load DataManager on a background thread to avoid blocking the UI
+                // (pCloud FUSE can take time for network reads).
+                let (tx, rx) = mpsc::channel();
+                self.pending_dm = Some(rx);
+                let sender_clone = sender.clone();
+                std::thread::spawn(move || {
+                    let result = DataManager::new(&path).map_err(|e| e.to_string());
+                    let _ = tx.send(result);
+                    sender_clone.input(AppMsg::DataDirReady(dir));
+                });
+            }
+            AppMsg::DataDirReady(dir) => {
+                match self.pending_dm.take().and_then(|rx| rx.recv().ok()) {
+                    Some(Ok(new_dm)) => {
                         self.dm = Some(Rc::new(RefCell::new(new_dm)));
                     }
-                    Err(e) => {
+                    Some(Err(e)) => {
                         sender.input(AppMsg::ShowToast(format!(
-                            "Could not load data from directory: {}",
-                            e
+                            "Could not load data from {dir}: {e}"
                         )));
                     }
+                    None => {}
                 }
                 self.recipes_dirty.set(true);
                 self.pantry_dirty.set(true);

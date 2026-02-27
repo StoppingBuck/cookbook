@@ -13,16 +13,7 @@ pub fn build_settings_page(sender: &ComponentSender<crate::app::App>) -> gtk::Wi
     scroll.set_vexpand(true);
     scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
 
-    let outer = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    outer.set_margin_top(24);
-    outer.set_margin_bottom(24);
-    outer.set_margin_start(24);
-    outer.set_margin_end(24);
-    outer.set_halign(gtk::Align::Center);
-    outer.set_hexpand(true);
-
     let page = adw::PreferencesPage::new();
-    page.set_hexpand(true);
 
     // ── Data group ────────────────────────────────────────────────────────────
     let data_group = adw::PreferencesGroup::new();
@@ -35,6 +26,7 @@ pub fn build_settings_page(sender: &ComponentSender<crate::app::App>) -> gtk::Wi
     let dir_row = adw::ActionRow::new();
     dir_row.set_title("Data Directory");
     dir_row.set_subtitle(&current_dir.display().to_string());
+    dir_row.set_subtitle_lines(1);
 
     let browse_btn = gtk::Button::with_label("Browse…");
     browse_btn.set_valign(gtk::Align::Center);
@@ -107,7 +99,6 @@ pub fn build_settings_page(sender: &ComponentSender<crate::app::App>) -> gtk::Wi
     appearance_group.add(&theme_row);
     page.add(&appearance_group);
 
-    outer.append(&page);
-    scroll.set_child(Some(&outer));
+    scroll.set_child(Some(&page));
     scroll.upcast()
 }

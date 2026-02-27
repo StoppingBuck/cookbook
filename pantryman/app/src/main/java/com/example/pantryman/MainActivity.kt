@@ -33,6 +33,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pantryAdapter: PantryAdapter
     private lateinit var prefs: SharedPreferences
     private lateinit var syncDirPicker: ActivityResultLauncher<Uri?>
+    @Volatile private var syncInProgress = false
 
     private var allIngredients = listOf<Ingredient>()
     private var searchQuery = ""
@@ -52,13 +53,10 @@ class MainActivity : AppCompatActivity() {
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
                 prefs.edit().putString(PREF_SYNC_URI, uri.toString()).apply()
-                Thread {
-                    syncFromSAF()
-                    runOnUiThread {
-                        reloadEngine()
-                        Toast.makeText(this, R.string.msg_sync_folder_set, Toast.LENGTH_SHORT).show()
-                    }
-                }.start()
+                runSyncIn {
+                    reloadEngine()
+                    Toast.makeText(this, R.string.msg_sync_folder_set, Toast.LENGTH_SHORT).show()
+                }
             }
         }
 
@@ -78,16 +76,26 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (::engine.isInitialized && getSyncUri() != null) {
-            Thread {
-                syncFromSAF()
-                runOnUiThread { reloadEngine() }
-            }.start()
+            runSyncIn { reloadEngine() }
         }
     }
 
     override fun onPause() {
         super.onPause()
         if (::engine.isInitialized) Thread { syncToSAF() }.start()
+    }
+
+    private fun runSyncIn(onDone: () -> Unit) {
+        if (syncInProgress) return
+        syncInProgress = true
+        Thread {
+            try {
+                syncFromSAF()
+            } finally {
+                syncInProgress = false
+            }
+            runOnUiThread(onDone)
+        }.start()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -294,14 +302,11 @@ class MainActivity : AppCompatActivity() {
 
         db.btnSyncNow.setOnClickListener {
             dialog.dismiss()
-            Thread {
-                syncFromSAF()
-                runOnUiThread { reloadEngine() }
+            runSyncIn {
+                reloadEngine()
                 syncToSAF()
-                runOnUiThread {
-                    Toast.makeText(this, R.string.sync_complete, Toast.LENGTH_SHORT).show()
-                }
-            }.start()
+                Toast.makeText(this, R.string.sync_complete, Toast.LENGTH_SHORT).show()
+            }
         }
 
         dialog.show()
@@ -324,6 +329,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun syncFromSAF() {
+        try {
         val syncUri = getSyncUri() ?: return
         val syncDir = DocumentFile.fromTreeUri(this, syncUri) ?: return
         val localDir = File(getAppDataDir())
@@ -353,9 +359,13 @@ class MainActivity : AppCompatActivity() {
                 ?.forEach { it.delete() }
         }
         Log.d(TAG, "Sync from SAF complete")
+        } catch (e: Exception) {
+            Log.e(TAG, "Sync from SAF failed", e)
+        }
     }
 
     private fun syncToSAF() {
+        try {
         val syncUri = getSyncUri() ?: return
         val syncDir = DocumentFile.fromTreeUri(this, syncUri) ?: return
         val localDir = File(getAppDataDir())
@@ -394,6 +404,9 @@ class MainActivity : AppCompatActivity() {
                 ?.forEach { it.delete() }
         }
         Log.d(TAG, "Sync to SAF complete")
+        } catch (e: Exception) {
+            Log.e(TAG, "Sync to SAF failed", e)
+        }
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
