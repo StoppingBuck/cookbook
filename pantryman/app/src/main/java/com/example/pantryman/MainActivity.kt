@@ -1,580 +1,434 @@
 package com.example.pantryman
 
-import androidx.appcompat.app.AppCompatActivity
-import android.os.Bundle
-import android.widget.*
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import androidx.appcompat.app.AlertDialog
-import android.view.LayoutInflater
-import android.util.Log
 import android.content.Intent
 import android.content.SharedPreferences
-import android.app.Activity
-import com.google.android.material.floatingactionbutton.FloatingActionButton
+import android.net.Uri
+import android.os.Bundle
+import android.util.Log
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
+import android.widget.ArrayAdapter
+import android.widget.Toast
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.widget.addTextChangedListener
+import androidx.documentfile.provider.DocumentFile
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.example.pantryman.databinding.ActivityMainBinding
+import com.example.pantryman.databinding.DialogAddToPantryBinding
+import com.example.pantryman.databinding.DialogCreateIngredientBinding
+import com.example.pantryman.databinding.DialogPantryItemBinding
+import com.example.pantryman.databinding.DialogSettingsBinding
+import java.io.File
 
 class MainActivity : AppCompatActivity() {
-    private lateinit var cookbookEngine: CookbookEngine
-    private lateinit var recyclerView: RecyclerView
-    private lateinit var adapter: IngredientsAdapter
-    private lateinit var categorySpinner: Spinner
-    private lateinit var addButton: FloatingActionButton
-    private lateinit var settingsButton: Button
-    private lateinit var statusText: TextView
-    private lateinit var sharedPreferences: SharedPreferences
-    
+
+    private lateinit var binding: ActivityMainBinding
+    private lateinit var engine: CookbookEngine
+    private lateinit var pantryAdapter: PantryAdapter
+    private lateinit var prefs: SharedPreferences
+    private lateinit var syncDirPicker: ActivityResultLauncher<Uri?>
+
     private var allIngredients = listOf<Ingredient>()
-    private var categories = listOf<String>()
+    private var searchQuery = ""
 
     companion object {
+        private const val TAG = "MainActivity"
         private const val PREFS_NAME = "PantrymanPrefs"
-        private const val PREF_DATA_DIR = "data_directory"
-        private const val DEFAULT_DATA_DIR = "cookbook_data" // relative to internal storage
-        private const val REQUEST_CODE_SETTINGS = 2001
+        private const val PREF_SYNC_URI = "sync_uri"
+        private const val DEFAULT_DATA_DIR = "cookbook_data"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        syncDirPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                prefs.edit().putString(PREF_SYNC_URI, uri.toString()).apply()
+                Thread {
+                    syncFromSAF()
+                    runOnUiThread {
+                        reloadEngine()
+                        Toast.makeText(this, R.string.msg_sync_folder_set, Toast.LENGTH_SHORT).show()
+                    }
+                }.start()
+            }
+        }
+
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-        
-        // Hide the action bar to prevent overlap with buttons
-        supportActionBar?.hide()
-        
-        Log.d("MainActivity", "=== PANTRYMAN APP STARTING ===")
-        Log.d("MainActivity", "onCreate called")
-        
-        sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        
-        initializeViews()
-        initializeCookbookEngine()
-        setupCategorySpinner()
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        setSupportActionBar(binding.toolbar)
+
+        prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+
         setupRecyclerView()
-        setupAddButton()
-        setupSettingsButton()
-        loadIngredients()
-        
-        Log.d("MainActivity", "=== PANTRYMAN APP STARTUP COMPLETE ===")
+        setupSearch()
+        setupFab()
+        initEngine()
     }
 
     override fun onResume() {
         super.onResume()
-        Log.d("MainActivity", "onResume called")
-        
-        // Check if data directory has changed and reinitialize if necessary
-        if (::cookbookEngine.isInitialized) {
-            handleDataDirectoryChange()
-        } else {
-            Log.d("MainActivity", "Engine not initialized, skipping reload")
+        if (::engine.isInitialized && getSyncUri() != null) {
+            Thread {
+                syncFromSAF()
+                runOnUiThread { reloadEngine() }
+            }.start()
         }
     }
 
-    private fun initializeViews() {
-        Log.d("MainActivity", "initializeViews() called")
-        recyclerView = findViewById(R.id.recyclerViewIngredients)
-        categorySpinner = findViewById(R.id.spinnerCategory)
-        addButton = findViewById(R.id.buttonAdd)
-        settingsButton = findViewById(R.id.buttonSettings)
-        statusText = findViewById(R.id.statusText)
-        Log.d("MainActivity", "Views initialized successfully")
+    override fun onPause() {
+        super.onPause()
+        if (::engine.isInitialized) Thread { syncToSAF() }.start()
     }
 
-    private fun initializeCookbookEngine() {
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_settings -> { showSettingsDialog(); true }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    // ── Engine ───────────────────────────────────────────────────────────────
+
+    private fun initEngine() {
         try {
-            // Get data directory from preferences or use default
-            val dataPath = getDataDirectory()
-            
-            // Create data directory if it doesn't exist
-            val dataDir = java.io.File(dataPath)
-            if (!dataDir.exists()) {
-                dataDir.mkdirs()
-                Log.d("MainActivity", "Created data directory: $dataPath")
-            }
-            
-            // Copy bundled assets to data directory if it's empty
-            setupInitialData(dataDir)
-            
-            cookbookEngine = CookbookEngine(dataPath)
-            Log.d("MainActivity", "CookbookEngine initialized successfully with path: $dataPath")
+            val dataPath = getAppDataDir()
+            File(dataPath).mkdirs()
+            setupInitialData(File(dataPath))
+            engine = CookbookEngine(dataPath)
+            loadData()
         } catch (e: Exception) {
-            Log.e("MainActivity", "Failed to initialize CookbookEngine", e)
-            showError("Failed to initialize cookbook engine: ${e.message}")
-        }
-    }
-    
-    private fun getDataDirectory(): String {
-        val savedPath = sharedPreferences.getString(PREF_DATA_DIR, null)
-        return if (savedPath != null) {
-            // Handle both file:// URIs and regular paths
-            if (savedPath.startsWith("content://")) {
-                // For now, fall back to default if it's a content URI
-                // TODO: Implement proper content URI to file path conversion
-                Log.w("MainActivity", "Content URI data directories not yet fully supported, using default")
-                "${filesDir.absolutePath}/$DEFAULT_DATA_DIR"
-            } else {
-                savedPath
-            }
-        } else {
-            "${filesDir.absolutePath}/$DEFAULT_DATA_DIR"
-        }
-    }
-    
-    private fun setupInitialData(dataDir: java.io.File) {
-        try {
-            // Only setup initial data if directory doesn't exist or is empty
-            if (!dataDir.exists() || dataDir.listFiles()?.isEmpty() == true) {
-                Log.d("MainActivity", "Setting up initial data from assets...")
-                
-                // Create directory structure
-                val ingredientsDir = java.io.File(dataDir, "ingredients")
-                val recipesDir = java.io.File(dataDir, "recipes")
-                ingredientsDir.mkdirs()
-                recipesDir.mkdirs()
-                
-                // Copy pantry.yaml
-                val pantryFile = java.io.File(dataDir, "pantry.yaml")
-                copyAssetToFile("pantry.yaml", pantryFile)
-                
-                // Copy ingredients
-                val assetIngredients = assets.list("ingredients") ?: emptyArray()
-                for (ingredient in assetIngredients) {
-                    val destFile = java.io.File(ingredientsDir, ingredient)
-                    copyAssetToFile("ingredients/$ingredient", destFile)
-                }
-                
-                // Copy recipes if any exist
-                val assetRecipes = assets.list("recipes") ?: emptyArray()
-                for (recipe in assetRecipes) {
-                    // Skip directories (like img/)
-                    if (!recipe.endsWith("/") && !recipe.equals("img")) {
-                        val destFile = java.io.File(recipesDir, recipe)
-                        copyAssetToFile("recipes/$recipe", destFile)
-                    }
-                }
-                
-                Log.d("MainActivity", "Initial data setup complete")
-            } else {
-                Log.d("MainActivity", "Data directory already exists with files, skipping initial setup")
-            }
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Failed to setup initial data", e)
-        }
-    }
-    
-    private fun copyAssetToFile(assetPath: String, destFile: java.io.File) {
-        try {
-            assets.open(assetPath).use { inputStream ->
-                destFile.outputStream().use { outputStream ->
-                    inputStream.copyTo(outputStream)
-                }
-            }
-            Log.d("MainActivity", "Copied asset: $assetPath -> ${destFile.absolutePath}")
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Failed to copy asset $assetPath", e)
+            Log.e(TAG, "Failed to initialize engine", e)
+            Toast.makeText(this, "Failed to start: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
-    private fun setupCategorySpinner() {
-        categorySpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>, view: android.view.View?, position: Int, id: Long) {
-                val selectedCategory = if (position == 0) null else categories[position - 1]
-                filterByCategory(selectedCategory)
-            }
-
-            override fun onNothingSelected(parent: AdapterView<*>) {}
-        }
+    private fun loadData() {
+        allIngredients = engine.getAllIngredients()
+        updateDisplay()
     }
+
+    private fun updateDisplay() {
+        val query = searchQuery.trim()
+        val pantryItems = allIngredients
+            .filter { it.isInPantry }
+            .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
+            .sortedWith(compareBy({ it.category }, { it.name }))
+
+        pantryAdapter.submitList(pantryItems)
+        binding.emptyState.visibility = if (pantryItems.isEmpty()) View.VISIBLE else View.GONE
+        binding.recyclerView.visibility = if (pantryItems.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    // ── UI setup ─────────────────────────────────────────────────────────────
 
     private fun setupRecyclerView() {
-        adapter = IngredientsAdapter(
-            onIngredientClick = { ingredient ->
-                showIngredientDetails(ingredient)
-            },
-            onPantryStatusChange = { ingredient, isInPantry ->
-                updatePantryStatus(ingredient, isInPantry)
+        pantryAdapter = PantryAdapter(onItemClick = { ingredient -> showPantryItemDialog(ingredient) })
+        binding.recyclerView.adapter = pantryAdapter
+        binding.recyclerView.layoutManager = LinearLayoutManager(this)
+        binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                if (dy > 0) binding.fabAdd.shrink() else binding.fabAdd.extend()
             }
-        )
-        
-        recyclerView.layoutManager = LinearLayoutManager(this)
-        recyclerView.adapter = adapter
+        })
     }
 
-    private fun setupAddButton() {
-        Log.d("MainActivity", "Setting up add button click listener")
-        Log.d("MainActivity", "Add button isClickable: ${addButton.isClickable}")
-        Log.d("MainActivity", "Add button isFocusable: ${addButton.isFocusable}")
-        Log.d("MainActivity", "Add button isEnabled: ${addButton.isEnabled}")
-        
-        addButton.setOnClickListener {
-            Log.w("MainActivity", "*** ADD BUTTON CLICKED ***")
-            showAddIngredientDialog()
-        }
-        
-        // Also try setting an onTouchListener for debugging
-        addButton.setOnTouchListener { view, event ->
-            Log.w("MainActivity", "*** ADD BUTTON TOUCHED *** - action: ${event.action}")
-            false // Return false to allow normal click handling
+    private fun setupSearch() {
+        binding.searchInput.addTextChangedListener { text ->
+            searchQuery = text?.toString() ?: ""
+            updateDisplay()
         }
     }
 
-    private fun setupSettingsButton() {
-        Log.d("MainActivity", "Setting up settings button click listener")
-        Log.d("MainActivity", "Settings button isClickable: ${settingsButton.isClickable}")
-        Log.d("MainActivity", "Settings button isFocusable: ${settingsButton.isFocusable}")
-        Log.d("MainActivity", "Settings button isEnabled: ${settingsButton.isEnabled}")
-        
-        settingsButton.setOnClickListener {
-            Log.w("MainActivity", "*** SETTINGS BUTTON CLICKED ***")
-            val intent = Intent(this, SettingsActivity::class.java)
-            startActivityForResult(intent, REQUEST_CODE_SETTINGS)
-        }
-        
-        // Also try setting an onTouchListener for debugging
-        settingsButton.setOnTouchListener { view, event ->
-            Log.w("MainActivity", "*** SETTINGS BUTTON TOUCHED *** - action: ${event.action}")
-            false // Return false to allow normal click handling
-        }
+    private fun setupFab() {
+        binding.fabAdd.setOnClickListener { showAddToPantryDialog() }
     }
 
-    private fun updateStatusText(message: String?, visible: Boolean = true) {
-        statusText.visibility = if (visible) android.view.View.VISIBLE else android.view.View.GONE
-        if (message != null) {
-            statusText.text = message
+    // ── Dialogs ──────────────────────────────────────────────────────────────
+
+    private fun showAddToPantryDialog() {
+        val db = DialogAddToPantryBinding.inflate(layoutInflater)
+        val sorted = allIngredients.sortedWith(compareBy({ it.category }, { it.name }))
+        var filtered = sorted
+
+        var outerDialog: AlertDialog? = null
+        val pickerAdapter = IngredientPickerAdapter { ingredient ->
+            outerDialog?.dismiss()
+            showPantryItemDialog(ingredient)
         }
-    }
+        db.recyclerView.adapter = pickerAdapter
+        db.recyclerView.layoutManager = LinearLayoutManager(this)
+        pickerAdapter.submitList(filtered)
 
-    private fun loadIngredients() {
-        Log.d("MainActivity", "loadIngredients() called")
-        updateStatusText("Loading ingredients...", true)
-        
-        try {
-            allIngredients = cookbookEngine.getAllIngredients()
-            Log.d("MainActivity", "Loaded ${allIngredients.size} ingredients")
-            
-            // Extract unique categories
-            categories = allIngredients.map { it.category }.distinct().sorted()
-            Log.d("MainActivity", "Found ${categories.size} categories: $categories")
-            
-            // Setup category spinner
-            val spinnerItems = listOf("All Categories") + categories
-            val spinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, spinnerItems)
-            spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-            categorySpinner.adapter = spinnerAdapter
-            
-            // Show all ingredients initially
-            filterByCategory(null)
-            
-            // Hide loading text when successful
-            updateStatusText(null, false)
-            
-            Log.d("MainActivity", "Ingredients loaded and displayed successfully")
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Failed to load ingredients", e)
-            updateStatusText("Failed to load ingredients: ${e.message}", true)
-            showError("Failed to load ingredients: ${e.message}")
-        }
-    }
-
-    private fun filterByCategory(category: String?) {
-        val filteredIngredients = if (category == null) {
-            allIngredients
-        } else {
-            allIngredients.filter { it.category == category }
-        }
-        
-        adapter.updateIngredients(filteredIngredients)
-    }
-
-    private fun showEditPantryDialog(ingredient: Ingredient) {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_edit_pantry, null)
-        val ingredientNameText = dialogView.findViewById<TextView>(R.id.textViewIngredientName)
-        val quantityEdit = dialogView.findViewById<EditText>(R.id.editTextQuantity)
-        val quantityTypeSpinner = dialogView.findViewById<Spinner>(R.id.spinnerQuantityType)
-        val inPantryCheckbox = dialogView.findViewById<CheckBox>(R.id.checkBoxInPantry)
-
-        // Set ingredient name
-        ingredientNameText.text = ingredient.name
-
-        // Set up quantity type spinner
-        val quantityTypes = listOf("", "kg", "g", "lb", "oz", "pieces", "cups", "tbsp", "tsp", "ml", "l", "fl oz")
-        val spinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, quantityTypes)
-        spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        quantityTypeSpinner.adapter = spinnerAdapter
-
-        // Pre-fill with current values
-        inPantryCheckbox.isChecked = ingredient.isInPantry
-        ingredient.quantity?.let { quantityEdit.setText(it) }
-        ingredient.quantityType?.let { currentType ->
-            val index = quantityTypes.indexOf(currentType)
-            if (index >= 0) {
-                quantityTypeSpinner.setSelection(index)
+        db.searchInput.addTextChangedListener { text ->
+            val q = text?.toString() ?: ""
+            filtered = if (q.isBlank()) sorted else sorted.filter {
+                it.name.contains(q, ignoreCase = true) || it.category.contains(q, ignoreCase = true)
             }
+            pickerAdapter.submitList(filtered)
         }
 
-        // Enable/disable quantity fields based on pantry status
-        val enableQuantityFields = { enabled: Boolean ->
-            quantityEdit.isEnabled = enabled
-            quantityTypeSpinner.isEnabled = enabled
-            if (!enabled) {
-                quantityEdit.setText("")
-                quantityTypeSpinner.setSelection(0)
+        db.btnCreateNew.setOnClickListener {
+            outerDialog?.dismiss()
+            showCreateIngredientDialog()
+        }
+
+        outerDialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.title_add_to_pantry)
+            .setView(db.root)
+            .setNegativeButton(R.string.btn_cancel) { d, _ -> d.dismiss() }
+            .create()
+        outerDialog!!.show()
+    }
+
+    private fun showPantryItemDialog(ingredient: Ingredient) {
+        val db = DialogPantryItemBinding.inflate(layoutInflater)
+        val units = listOf("", "kg", "g", "lb", "oz", "pieces", "cups", "tbsp", "tsp", "ml", "l", "fl oz")
+        db.autoUnit.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, units))
+
+        if (ingredient.isInPantry) {
+            ingredient.quantity?.let { db.editQuantity.setText(it) }
+            ingredient.quantityType?.let { unit ->
+                val idx = units.indexOf(unit)
+                if (idx >= 0) db.autoUnit.setText(units[idx], false)
             }
+            db.btnRemove.visibility = View.VISIBLE
         }
 
-        enableQuantityFields(ingredient.isInPantry)
-        
-        inPantryCheckbox.setOnCheckedChangeListener { _, isChecked ->
-            enableQuantityFields(isChecked)
+        var dialog: AlertDialog? = null
+
+        db.btnRemove.setOnClickListener {
+            engine.updatePantryStatus(ingredient.name, false)
+            loadData()
+            dialog?.dismiss()
+            Toast.makeText(this, "${ingredient.name} removed from pantry", Toast.LENGTH_SHORT).show()
         }
 
-        AlertDialog.Builder(this)
-            .setTitle("Edit Pantry Status")
-            .setView(dialogView)
-            .setPositiveButton("Save") { _, _ ->
-                val isInPantry = inPantryCheckbox.isChecked
-                val quantity = if (isInPantry && quantityEdit.text.toString().isNotEmpty()) {
-                    quantityEdit.text.toString().toDoubleOrNull()
-                } else null
-                val quantityType = if (isInPantry && quantityTypeSpinner.selectedItemPosition > 0) {
-                    quantityTypes[quantityTypeSpinner.selectedItemPosition]
-                } else null
-                
-                updatePantryStatus(ingredient, isInPantry, quantity, quantityType)
+        val positiveLabel = if (ingredient.isInPantry) "Update" else getString(R.string.btn_add_to_pantry)
+        dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(ingredient.name.replaceFirstChar { it.uppercase() })
+            .setMessage(ingredient.category)
+            .setView(db.root)
+            .setPositiveButton(positiveLabel) { _, _ ->
+                val qty = db.editQuantity.text?.toString()?.toDoubleOrNull()
+                val unit = db.autoUnit.text?.toString()?.takeIf { it.isNotEmpty() }
+                val success = engine.updatePantryStatus(ingredient.name, true, qty, unit)
+                if (success) {
+                    loadData()
+                    val msg = if (ingredient.isInPantry) "Updated ${ingredient.name}" else "${ingredient.name} added to pantry"
+                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Failed to update pantry", Toast.LENGTH_SHORT).show()
+                }
             }
-            .setNegativeButton("Cancel") { dialog, _ -> dialog.dismiss() }
+            .setNegativeButton(R.string.btn_cancel) { d, _ -> d.dismiss() }
+            .create()
+        dialog!!.show()
+    }
+
+    private fun showCreateIngredientDialog() {
+        val db = DialogCreateIngredientBinding.inflate(layoutInflater)
+        val categories = engine.getAllCategories()
+        db.autoCategory.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, categories))
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.title_create_ingredient)
+            .setView(db.root)
+            .setPositiveButton("Create") { _, _ ->
+                val name = db.editName.text?.toString()?.trim() ?: ""
+                val category = db.autoCategory.text?.toString()?.trim() ?: ""
+                val tags = db.editTags.text?.toString()
+                    ?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+                    ?: emptyList()
+
+                if (name.isEmpty() || category.isEmpty()) {
+                    Toast.makeText(this, "Name and category are required", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+
+                val success = engine.createIngredient(name, category, null, tags)
+                if (success) {
+                    allIngredients = engine.getAllIngredients()
+                    val newIngredient = allIngredients.find { it.name.equals(name, ignoreCase = true) }
+                    if (newIngredient != null) {
+                        showPantryItemDialog(newIngredient)
+                    } else {
+                        loadData()
+                    }
+                } else {
+                    Toast.makeText(this, "Failed to create ingredient", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton(R.string.btn_cancel) { d, _ -> d.dismiss() }
             .show()
     }
 
-    private fun updatePantryStatus(ingredient: Ingredient, isInPantry: Boolean, quantity: Double? = null, quantityType: String? = null) {
+    private fun showSettingsDialog() {
+        val db = DialogSettingsBinding.inflate(layoutInflater)
+        db.textSyncUri.text = getSyncUri()?.toString() ?: getString(R.string.sync_folder_none)
+
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.title_settings)
+            .setView(db.root)
+            .setNegativeButton(R.string.btn_cancel) { d, _ -> d.dismiss() }
+            .create()
+
+        db.btnChooseSyncFolder.setOnClickListener {
+            dialog.dismiss()
+            syncDirPicker.launch(getSyncUri())
+        }
+
+        db.btnSyncNow.setOnClickListener {
+            dialog.dismiss()
+            Thread {
+                syncFromSAF()
+                runOnUiThread { reloadEngine() }
+                syncToSAF()
+                runOnUiThread {
+                    Toast.makeText(this, R.string.sync_complete, Toast.LENGTH_SHORT).show()
+                }
+            }.start()
+        }
+
+        dialog.show()
+    }
+
+    // ── Sync ─────────────────────────────────────────────────────────────────
+
+    private fun getSyncUri(): Uri? {
+        return prefs.getString(PREF_SYNC_URI, null)?.let { Uri.parse(it) }
+    }
+
+    private fun reloadEngine() {
         try {
-            val success = cookbookEngine.updatePantryStatus(ingredient.name, isInPantry, quantity, quantityType)
-            
-            if (success) {
-                // Update local data only if the operation succeeded
-                val updatedIngredients = allIngredients.map { 
-                    if (it.name == ingredient.name) {
-                        it.copy(
-                            isInPantry = isInPantry,
-                            quantity = if (isInPantry && quantity != null) quantity.toString() else null,
-                            quantityType = if (isInPantry) quantityType else null,
-                            lastUpdated = java.time.LocalDate.now().toString()
-                        )
-                    } else {
-                        it
+            engine.cleanup()
+            engine = CookbookEngine(getAppDataDir())
+            loadData()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to reload engine", e)
+        }
+    }
+
+    private fun syncFromSAF() {
+        val syncUri = getSyncUri() ?: return
+        val syncDir = DocumentFile.fromTreeUri(this, syncUri) ?: return
+        val localDir = File(getAppDataDir())
+
+        // pantry.yaml: copy SAF → local
+        syncDir.findFile("pantry.yaml")?.uri?.let { uri ->
+            contentResolver.openInputStream(uri)?.use { input ->
+                File(localDir, "pantry.yaml").outputStream().use { input.copyTo(it) }
+            }
+        }
+
+        // ingredients/: full mirror (copy new/updated, delete removed)
+        val localIngredients = File(localDir, "ingredients").also { it.mkdirs() }
+        val safIngredients = syncDir.findFile("ingredients")
+        if (safIngredients != null) {
+            val safFiles = safIngredients.listFiles().filter { it.name?.endsWith(".yaml") == true }
+            val safNames = safFiles.mapNotNull { it.name }.toSet()
+            // Copy SAF → local
+            safFiles.forEach { file ->
+                contentResolver.openInputStream(file.uri)?.use { input ->
+                    File(localIngredients, file.name!!).outputStream().use { input.copyTo(it) }
+                }
+            }
+            // Delete local files not in SAF (mirror deletions from desktop)
+            localIngredients.listFiles()
+                ?.filter { it.name !in safNames }
+                ?.forEach { it.delete() }
+        }
+        Log.d(TAG, "Sync from SAF complete")
+    }
+
+    private fun syncToSAF() {
+        val syncUri = getSyncUri() ?: return
+        val syncDir = DocumentFile.fromTreeUri(this, syncUri) ?: return
+        val localDir = File(getAppDataDir())
+
+        // pantry.yaml: copy local → SAF
+        val pantryFile = File(localDir, "pantry.yaml")
+        if (pantryFile.exists()) {
+            val safPantry = syncDir.findFile("pantry.yaml")
+                ?: syncDir.createFile("application/x-yaml", "pantry.yaml")
+            safPantry?.uri?.let { uri ->
+                contentResolver.openOutputStream(uri, "wt")?.use { out ->
+                    pantryFile.inputStream().copyTo(out)
+                }
+            }
+        }
+
+        // ingredients/: copy local → SAF (mirror deletions too)
+        val localIngredients = File(localDir, "ingredients")
+        if (localIngredients.exists()) {
+            val safIngredients = syncDir.findFile("ingredients")
+                ?: syncDir.createDirectory("ingredients")
+            val localNames = localIngredients.listFiles()?.mapNotNull { it.name }?.toSet() ?: emptySet()
+            // Copy local → SAF
+            localIngredients.listFiles()?.forEach { localFile ->
+                val safFile = safIngredients?.findFile(localFile.name)
+                    ?: safIngredients?.createFile("application/x-yaml", localFile.name)
+                safFile?.uri?.let { uri ->
+                    contentResolver.openOutputStream(uri, "wt")?.use { out ->
+                        localFile.inputStream().copyTo(out)
                     }
                 }
-                allIngredients = updatedIngredients
-                
-                // Refresh the current view
-                filterByCategory(if (categorySpinner.selectedItemPosition == 0) null else categories[categorySpinner.selectedItemPosition - 1])
-                
-                val action = if (isInPantry) "added to" else "removed from"
-                Toast.makeText(this, "${ingredient.name} $action pantry", Toast.LENGTH_SHORT).show()
-                
-                Log.d("MainActivity", "Successfully updated pantry status for ${ingredient.name}: $isInPantry")
-                if (quantity != null && quantityType != null) {
-                    Log.d("MainActivity", "Updated quantity: $quantity $quantityType")
-                }
-            } else {
-                Log.e("MainActivity", "Failed to update pantry status for ${ingredient.name} - engine returned false")
-                showError("Failed to update pantry for ${ingredient.name}")
             }
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Failed to update pantry status", e)
-            showError("Failed to update pantry: ${e.message}")
+            // Delete SAF files not in local (mirror deletions from Android)
+            safIngredients?.listFiles()
+                ?.filter { it.name !in localNames }
+                ?.forEach { it.delete() }
         }
+        Log.d(TAG, "Sync to SAF complete")
     }
 
-    // Simplified version for checkbox toggles
-    private fun updatePantryStatus(ingredient: Ingredient, isInPantry: Boolean) {
-        updatePantryStatus(ingredient, isInPantry, null, null)
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private fun getAppDataDir(): String {
+        return "${filesDir.absolutePath}/$DEFAULT_DATA_DIR"
     }
 
-    private fun showIngredientDetails(ingredient: Ingredient) {
-        AlertDialog.Builder(this)
-            .setTitle(ingredient.name)
-            .setMessage(buildString {
-                append("Category: ${ingredient.category}\n")
-                if (ingredient.tags.isNotEmpty()) {
-                    append("Tags: ${ingredient.tags.joinToString(", ")}\n")
-                }
-                if (ingredient.isInPantry) {
-                    append("Status: In pantry\n")
-                    ingredient.quantity?.let { append("Quantity: $it\n") }
-                    ingredient.quantityType?.let { append("Unit: $it\n") }
-                    ingredient.lastUpdated?.let { append("Last updated: $it") }
-                } else {
-                    append("Status: Not in pantry")
-                }
-            })
-            .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
-            .setNeutralButton("Edit") { _, _ -> showEditIngredientDialog(ingredient) }
-            .setNegativeButton("Edit Pantry") { _, _ -> showEditPantryDialog(ingredient) }
-            .show()
-    }
-
-    private fun showAddIngredientDialog() {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_add_ingredient, null)
-        val nameEdit = dialogView.findViewById<EditText>(R.id.editTextName)
-        val categoryEdit = dialogView.findViewById<EditText>(R.id.editTextCategory)
-        val tagsEdit = dialogView.findViewById<EditText>(R.id.editTextTags)
-
-        AlertDialog.Builder(this)
-            .setTitle("Add New Ingredient")
-            .setView(dialogView)
-            .setPositiveButton("Add") { _, _ ->
-                val name = nameEdit.text.toString().trim()
-                val category = categoryEdit.text.toString().trim()
-                val tags = tagsEdit.text.toString().split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                
-                if (name.isNotEmpty() && category.isNotEmpty()) {
-                    addNewIngredient(name, category, tags)
-                } else {
-                    showError("Name and category are required")
-                }
-            }
-            .setNegativeButton("Cancel") { dialog, _ -> dialog.dismiss() }
-            .show()
-    }
-
-    private fun showEditIngredientDialog(ingredient: Ingredient) {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_add_ingredient, null)
-        val nameEdit = dialogView.findViewById<EditText>(R.id.editTextName)
-        val categoryEdit = dialogView.findViewById<EditText>(R.id.editTextCategory)
-        val tagsEdit = dialogView.findViewById<EditText>(R.id.editTextTags)
-
-        // Pre-fill with current values
-        nameEdit.setText(ingredient.name)
-        categoryEdit.setText(ingredient.category)
-        tagsEdit.setText(ingredient.tags.joinToString(", "))
-
-        AlertDialog.Builder(this)
-            .setTitle("Edit Ingredient")
-            .setView(dialogView)
-            .setPositiveButton("Save") { _, _ ->
-                val name = nameEdit.text.toString().trim()
-                val category = categoryEdit.text.toString().trim()
-                val tags = tagsEdit.text.toString().split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                
-                if (name.isNotEmpty() && category.isNotEmpty()) {
-                    updateIngredient(ingredient.name, name, category, tags)
-                } else {
-                    showError("Name and category are required")
-                }
-            }
-            .setNegativeButton("Cancel") { dialog, _ -> dialog.dismiss() }
-            .show()
-    }
-
-    private fun addNewIngredient(name: String, category: String, tags: List<String>) {
+    private fun setupInitialData(dataDir: File) {
+        if (dataDir.exists() && dataDir.listFiles()?.isNotEmpty() == true) return
         try {
-            val success = cookbookEngine.createIngredient(name, category, null, tags)
-            if (success) {
-                loadIngredients() // Reload to get the new ingredient
-                Toast.makeText(this, "Ingredient '$name' added successfully", Toast.LENGTH_SHORT).show()
-                Log.d("MainActivity", "Successfully added new ingredient: $name")
-            } else {
-                Log.e("MainActivity", "Failed to add ingredient '$name' - engine returned false")
-                showError("Failed to add ingredient '$name'")
+            Log.d(TAG, "Copying initial data from assets")
+            File(dataDir, "ingredients").mkdirs()
+            File(dataDir, "recipes").mkdirs()
+            copyAsset("pantry.yaml", File(dataDir, "pantry.yaml"))
+            assets.list("ingredients")?.forEach { name ->
+                copyAsset("ingredients/$name", File(dataDir, "ingredients/$name"))
             }
         } catch (e: Exception) {
-            Log.e("MainActivity", "Failed to add ingredient", e)
-            showError("Failed to add ingredient: ${e.message}")
+            Log.e(TAG, "Failed to setup initial data", e)
         }
     }
 
-    private fun updateIngredient(oldName: String, newName: String, category: String, tags: List<String>) {
+    private fun copyAsset(assetPath: String, dest: File) {
         try {
-            val success = cookbookEngine.updateIngredient(oldName, newName, category, null, tags)
-            if (success) {
-                loadIngredients() // Reload to get updated data
-                Toast.makeText(this, "Ingredient updated successfully", Toast.LENGTH_SHORT).show()
-                Log.d("MainActivity", "Successfully updated ingredient: $oldName -> $newName")
-            } else {
-                Log.e("MainActivity", "Failed to update ingredient '$oldName' - engine returned false")
-                showError("Failed to update ingredient '$oldName'")
+            assets.open(assetPath).use { input ->
+                dest.outputStream().use { output -> input.copyTo(output) }
             }
         } catch (e: Exception) {
-            Log.e("MainActivity", "Failed to update ingredient", e)
-            showError("Failed to update ingredient: ${e.message}")
-        }
-    }
-
-    private fun showError(message: String) {
-        Log.e("MainActivity", "UI error: $message")
-        AlertDialog.Builder(this)
-            .setTitle("Error")
-            .setMessage(message)
-            .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
-            .show()
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-    }
-
-    /**
-     * Reinitialize the cookbook engine with a new data directory
-     * This allows for dynamic data directory switching without app restart
-     */
-    fun reinitializeWithNewDataDirectory(newDataPath: String): Boolean {
-        return try {
-            Log.d("MainActivity", "Reinitializing cookbook engine with new data directory: $newDataPath")
-            updateStatusText("Switching to new data directory...", true)
-            
-            // Create new data directory if it doesn't exist
-            val dataDir = java.io.File(newDataPath)
-            if (!dataDir.exists()) {
-                dataDir.mkdirs()
-                Log.d("MainActivity", "Created new data directory: $newDataPath")
-            }
-            
-            // Initialize new cookbook engine
-            val newEngine = CookbookEngine(newDataPath)
-            
-            // If successful, replace the old engine
-            cookbookEngine = newEngine
-            Log.d("MainActivity", "Successfully switched to new data directory")
-            
-            // Reload ingredients with new engine
-            loadIngredients()
-            
-            updateStatusText("Switched to new data directory successfully", true)
-            // Hide status after a delay
-            statusText.postDelayed({
-                updateStatusText(null, false)
-            }, 2000)
-            
-            true
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Failed to reinitialize with new data directory", e)
-            updateStatusText("Failed to switch data directory: ${e.message}", true)
-            false
-        }
-    }
-    
-    /**
-     * Handle data directory change from settings
-     * Called when user selects a new data directory in SettingsActivity
-     */
-    fun handleDataDirectoryChange() {
-        Log.d("MainActivity", "Handling data directory change")
-        val newDataPath = getDataDirectory()
-        reinitializeWithNewDataDirectory(newDataPath)
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        
-        if (requestCode == REQUEST_CODE_SETTINGS && resultCode == Activity.RESULT_OK) {
-            val dataDirectoryChanged = data?.getBooleanExtra("data_directory_changed", false) ?: false
-            if (dataDirectoryChanged) {
-                Log.d("MainActivity", "Data directory changed, reinitializing engine")
-                handleDataDirectoryChange()
-            }
+            Log.w(TAG, "Could not copy asset $assetPath: ${e.message}")
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        if (::cookbookEngine.isInitialized) {
-            cookbookEngine.cleanup()
-        }
+        if (::engine.isInitialized) engine.cleanup()
     }
 }

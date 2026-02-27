@@ -18,8 +18,7 @@ NC='\033[0m' # No Color
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PANTRYMAN_DIR="$PROJECT_ROOT/pantryman"
 APP_PACKAGE="com.example.pantryman"
-# Use Windows adb.exe if available (for WSL/Arch)
-ADB="/mnt/c/Android/platform-tools/adb.exe"
+ADB="$HOME/Android/Sdk/platform-tools/adb"
 
 echo -e "${BLUE}🍳 Cookbook Development Helper${NC}"
 echo "=============================="
@@ -84,45 +83,54 @@ run_gtk() {
 # Combined android workflow: build, install, run, and stream logs
 android() {
     clear
-    
-    export PATH="/mnt/c/Android/platform-tools:$PATH"
-    export ANDROID_NDK_HOME="/opt/android-ndk" # Adjust as needed½
-    export ANDROID_SDK_ROOT="/mnt/c/Users/madsp/AppData/Local/Android/Sdk" # Adjust as needed
 
+    # Set up Android SDK/NDK paths
+    local NDK_VERSION
+    NDK_VERSION=$(ls "$HOME/Android/Sdk/ndk" 2>/dev/null | tail -1)
+    if [ -z "$NDK_VERSION" ]; then
+        echo -e "${RED}❌ NDK not found at ~/Android/Sdk/ndk/${NC}"
+        echo "Install via SDK Manager: NDK (Side by side)"
+        exit 1
+    fi
+    export ANDROID_NDK_HOME="$HOME/Android/Sdk/ndk/$NDK_VERSION"
+    export ANDROID_SDK_ROOT="$HOME/Android/Sdk"
+    export PATH="$HOME/Android/Sdk/platform-tools:$PATH"
+    echo -e "${CYAN}Using NDK: $ANDROID_NDK_HOME${NC}"
+
+    # Step 1: Build everything
     echo -e "${CYAN}🔧 Building Rust JNI library for Android...${NC}"
     cd "$PANTRYMAN_DIR/rust-bridge"
     if ! command -v cargo-ndk >/dev/null 2>&1; then
         echo -e "${YELLOW}⚠️  cargo-ndk not found, installing...${NC}"
         cargo install cargo-ndk
     fi
-    cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release
-    echo -e "${GREEN}✅ Rust JNI library built and copied${NC}"
+    cargo ndk -t arm64-v8a -t x86_64 -o ../app/src/main/jniLibs build --release
+    echo -e "${GREEN}✅ Rust JNI library built${NC}"
 
     echo -e "${CYAN}🔧 Building Pantryman Android app...${NC}"
     cd "$PANTRYMAN_DIR"
-    gradle assembleDebug
+    ./gradlew assembleDebug
     echo -e "${GREEN}✅ Build complete${NC}"
 
-    # Install
-    check_device
-    echo -e "${CYAN}📱 Installing to device...${NC}"
-    cd "$PANTRYMAN_DIR"
-    
-    if ! ADB=$ADB gradle installDebug; then
-        echo -e "${YELLOW}⚠️  Gradle installDebug failed, trying manual APK install...${NC}"
-        APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
-        if [ -f "$APK_PATH" ]; then
-            echo -e "${YELLOW}⚠️  Uninstalling existing app to avoid signature conflict...${NC}"
-            $ADB uninstall $APP_PACKAGE || true
-            $ADB install -r "$APK_PATH"
-            echo -e "${GREEN}✅ Manual APK install complete${NC}"
-        else
-            echo -e "${RED}❌ APK not found at $APK_PATH${NC}"
-            exit 1
-        fi
-    else
-        echo -e "${GREEN}✅ Installation complete${NC}"
+    # Step 2: Require a connected hardware device
+    local device
+    device=$($ADB devices | tr -d '\r' | grep -E "device$" | head -1 | cut -f1)
+    if [ -z "$device" ]; then
+        echo -e "${RED}❌ No device connected. Plug in your Pixel 7 and try again.${NC}"
+        exit 1
     fi
+    echo -e "${GREEN}📱 Device: $device${NC}"
+
+    # Step 3: Install via adb directly (more reliable than gradlew installDebug)
+    echo -e "${CYAN}📱 Installing to device...${NC}"
+    APK_PATH="$PANTRYMAN_DIR/app/build/outputs/apk/debug/app-debug.apk"
+    if [ ! -f "$APK_PATH" ]; then
+        echo -e "${RED}❌ APK not found at $APK_PATH${NC}"
+        exit 1
+    fi
+    $ADB uninstall $APP_PACKAGE 2>/dev/null || true
+    $ADB install "$APK_PATH"
+    echo -e "${GREEN}✅ Installation complete${NC}"
 
     # Run
     echo -e "${CYAN}🚀 Starting app...${NC}"
@@ -158,7 +166,7 @@ run_clean() {
     cd "$PROJECT_ROOT"
     cargo clean
     cd "$PANTRYMAN_DIR"
-    gradle clean
+    ./gradlew clean
     echo -e "${GREEN}✅ Clean complete${NC}"
 }
 
